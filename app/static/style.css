@@ -1,0 +1,130 @@
+/* ─── Theme variables ─────────────────────────────────────────────────────── */
+[data-bs-theme="dark"] {
+  --card-bg: #1a1d23;
+  --card-border: #2d3140;
+  --log-bg: #0f1117;
+  --log-entry-border: #2d3140;
+  --sms-unread-bg: #1c2333;
+  --sms-read-bg: #1a1d23;
+}
+[data-bs-theme="light"] {
+  --card-bg: #ffffff;
+  --card-border: #dee2e6;
+  --log-bg: #f8f9fa;
+  --log-entry-border: #e9ecef;
+  --sms-unread-bg: #eef4ff;
+  --sms-read-bg: #ffffff;
+}
+
+/* ─── Base ────────────────────────────────────────────────────────────────── */
+body {
+  min-height: 100vh;
+  transition: background-color 0.25s, color 0.25s;
+}
+
+.navbar {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* ─── Cards ───────────────────────────────────────────────────────────────── */
+.card {
+  border-color: var(--card-border);
+  background-color: var(--card-bg);
+  box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+  transition: box-shadow 0.2s;
+}
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
+.card-header {
+  background: transparent;
+  border-bottom-color: var(--card-border);
+}
+
+/* ─── Signal bar colours ─────────────────────────────────────────────────── */
+.sig-excellent { background-color: #22c55e !important; }
+.sig-good      { background-color: #84cc16 !important; }
+.sig-fair      { background-color: #eab308 !important; }
+.sig-poor      { background-color: #f97316 !important; }
+.sig-verypoor  { background-color: #ef4444 !important; }
+.sig-unknown   { background-color: #6b7280 !important; }
+
+.badge-excellent { background-color: #22c55e !important; color: #fff; }
+.badge-good      { background-color: #84cc16 !important; color: #fff; }
+.badge-fair      { background-color: #eab308 !important; color: #fff; }
+.badge-poor      { background-color: #f97316 !important; color: #fff; }
+.badge-verypoor  { background-color: #ef4444 !important; color: #fff; }
+.badge-unknown   { background-color: #6b7280 !important; color: #fff; }
+
+/* Memory bar */
+.mem-ok   { background-color: #22c55e !important; }
+.mem-warn { background-color: #eab308 !important; }
+.mem-crit { background-color: #ef4444 !important; }
+
+/* ─── SMS Inbox ───────────────────────────────────────────────────────────── */
+.sms-container {
+  max-height: 480px;
+  overflow-y: auto;
+}
+.sms-item {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--log-entry-border);
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  transition: background-color 0.15s;
+}
+.sms-item:last-child { border-bottom: none; }
+.sms-item.unread { background-color: var(--sms-unread-bg); }
+.sms-item.read   { background-color: var(--sms-read-bg); }
+.sms-item:hover  { filter: brightness(1.04); }
+.sms-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+.sms-meta { flex: 1; min-width: 0; }
+.sms-sender { font-weight: 600; font-size: 0.9rem; }
+.sms-time   { font-size: 0.75rem; opacity: 0.6; }
+.sms-body   { font-size: 0.88rem; margin-top: 0.25rem; word-break: break-word; }
+.sms-actions { flex-shrink: 0; }
+
+/* ─── Event Log ──────────────────────────────────────────────────────────── */
+.log-container {
+  max-height: 480px;
+  overflow-y: auto;
+  background-color: var(--log-bg);
+}
+.log-entry {
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--log-entry-border);
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-ts    { opacity: 0.5; white-space: nowrap; }
+.log-level { font-weight: 700; min-width: 4.5rem; }
+.log-INFO    .log-level { color: #22c55e; }
+.log-WARNING .log-level { color: #eab308; }
+.log-ERROR   .log-level { color: #ef4444; }
+.log-DEBUG   .log-level { color: #60a5fa; }
+
+/* ─── Misc ───────────────────────────────────────────────────────────────── */
+#countdown { font-variant-numeric: tabular-nums; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,.35); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.55); }

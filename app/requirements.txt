@@ -1,0 +1,4 @@
+flask>=3.0,<4
+flask-cors>=4.0,<5
+pyserial>=3.5,<4
+gunicorn>=22.0,<23
