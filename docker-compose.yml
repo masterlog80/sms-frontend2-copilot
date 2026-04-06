@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  modem-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: modem-dashboard:latest
+    container_name: modem-dashboard
+    restart: unless-stopped
+
+    # ── Privileged mode required to access /dev/ttyUSB0 ──────────────────
+    privileged: true
+
+    # ── Device passthrough ────────────────────────────────────────────────
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    # Uncomment the lines below if your modem uses a different port
+    # (e.g. /dev/ttyUSB1 for data, /dev/ttyUSB2 for AT commands):
+    #   - /dev/ttyUSB1:/dev/ttyUSB1
+    #   - /dev/ttyUSB2:/dev/ttyUSB2
+
+    # ── Persistent data (SMS history, event log) ──────────────────────────
+    volumes:
+      - modem_data:/data
+
+    # ── Published port ────────────────────────────────────────────────────
+    ports:
+      - "5000:5000"
+
+    # ── Configuration (override as needed) ───────────────────────────────
+    environment:
+      MODEM_DEVICE: /dev/ttyUSB0   # serial device exposed inside the container
+      POLL_INTERVAL: 5             # seconds between modem polls
+      DATA_DIR: /data              # persistent data directory (inside container)
+      LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR
+
+    # ── Health check ──────────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/status')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  modem_data:
+    driver: local
