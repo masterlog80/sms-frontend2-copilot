@@ -1,14 +1,22 @@
-/* ─── USB Modem Dashboard – app.js ─────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   USB Modem Dashboard – app.js
+════════════════════════════════════════════════════════════════════════════ */
 'use strict';
 
-const API = '';          // same origin
-const REFRESH_INTERVAL = 5; // seconds
+const API = '';
+const REFRESH_INTERVAL = 5;   // seconds
+const SPARK_MAX = 20;          // sparkline history length
+const OV_SMS_MAX = 3;          // overview tab SMS preview count
+const OV_LOG_MAX = 8;          // overview tab log preview count
 
 let countdown = REFRESH_INTERVAL;
-let refreshTimer = null;
+let _smsList  = [];
+let _logList  = [];
+let _sparkHistory = [];        // [{pct, ts}]
+let _logFilter = 'ALL';
 
 /* ─── Theme ──────────────────────────────────────────────────────────────── */
-const html = document.documentElement;
+const html    = document.documentElement;
 const btnTheme = document.getElementById('btnTheme');
 const THEME_KEY = 'modem-dash-theme';
 
@@ -18,21 +26,21 @@ function applyTheme(theme) {
     ? '<i class="bi bi-sun-fill"></i>'
     : '<i class="bi bi-moon-stars-fill"></i>';
   localStorage.setItem(THEME_KEY, theme);
+  drawSparkline();   // redraw with updated colours
 }
 
 btnTheme.addEventListener('click', () => {
   applyTheme(html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark');
 });
 
-// Restore saved preference (default: dark)
 applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
 /* ─── Toast helper ───────────────────────────────────────────────────────── */
 function showToast(message, type = 'info') {
   const area = document.getElementById('toastArea');
-  const colours = { success: 'bg-success', danger: 'bg-danger', info: 'bg-primary', warning: 'bg-warning' };
-  const el = document.createElement('div');
-  el.className = `toast align-items-center text-white ${colours[type] || 'bg-primary'} border-0`;
+  const cls  = { success: 'bg-success', danger: 'bg-danger', info: 'bg-primary', warning: 'bg-warning' };
+  const el   = document.createElement('div');
+  el.className = `toast align-items-center text-white ${cls[type] || 'bg-primary'} border-0`;
   el.setAttribute('role', 'alert');
   el.innerHTML = `
     <div class="d-flex">
@@ -45,190 +53,328 @@ function showToast(message, type = 'info') {
   el.addEventListener('hidden.bs.toast', () => el.remove());
 }
 
-/* ─── Status / Signal / Memory ──────────────────────────────────────────── */
-function qualityClass(quality) {
-  const map = {
-    'Excellent': 'excellent',
-    'Good':      'good',
-    'Fair':      'fair',
-    'Poor':      'poor',
-    'Very Poor': 'verypoor',
-  };
-  return map[quality] || 'unknown';
+/* ─── Utility ────────────────────────────────────────────────────────────── */
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;');
 }
 
+function fmtTime(isoStr) {
+  if (!isoStr) return '–';
+  try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
+}
+function fmtDateTime(isoStr) {
+  if (!isoStr) return '–';
+  try { return new Date(isoStr).toLocaleString(); } catch { return isoStr; }
+}
+
+function qualityClass(quality) {
+  return { Excellent: 'excellent', Good: 'good', Fair: 'fair', Poor: 'poor', 'Very Poor': 'verypoor' }[quality] || 'unknown';
+}
+
+/* ─── SVG gauge ──────────────────────────────────────────────────────────── */
+// The gauge arc path "M10,65 A50,50 0 0,1 110,65" has circumference ≈ 157.
+const GAUGE_LEN = 157;
+const GAUGE_COLORS = {
+  excellent: '#22c55e',
+  good:      '#84cc16',
+  fair:      '#eab308',
+  poor:      '#f97316',
+  verypoor:  '#ef4444',
+  unknown:   '#6b7280',
+};
+
+function updateGauge(pct, quality) {
+  const el = document.getElementById('gaugeSig');
+  if (!el) return;
+  const filled = (pct / 100) * GAUGE_LEN;
+  el.setAttribute('stroke-dashoffset', GAUGE_LEN - filled);
+  el.style.stroke = GAUGE_COLORS[qualityClass(quality)] || GAUGE_COLORS.unknown;
+}
+
+/* ─── Refresh ring ───────────────────────────────────────────────────────── */
+const RING_CIRCUM = 94.25;
+
+function updateRing(secondsLeft) {
+  const el = document.getElementById('ringProgress');
+  if (!el) return;
+  const filled = (secondsLeft / REFRESH_INTERVAL) * RING_CIRCUM;
+  el.setAttribute('stroke-dashoffset', RING_CIRCUM - filled);
+  document.getElementById('countdown').textContent = secondsLeft;
+}
+
+/* ─── Sparkline (canvas) ─────────────────────────────────────────────────── */
+function drawSparkline() {
+  const canvas = document.getElementById('sparkCanvas');
+  if (!canvas) return;
+  const isDark = html.getAttribute('data-bs-theme') === 'dark';
+  const W = canvas.offsetWidth || 400;
+  const H = 60;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  if (_sparkHistory.length < 2) {
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Collecting data…', W / 2, H / 2 + 4);
+    return;
+  }
+
+  const pts = _sparkHistory;
+  const xStep = W / (pts.length - 1);
+
+  // Gradient fill under line
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(99,102,241,.35)');
+  grad.addColorStop(1, 'rgba(99,102,241,0)');
+
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = i * xStep;
+    const y = H - (p.pct / 100) * (H - 8) - 4;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  // close shape for fill
+  ctx.lineTo((pts.length - 1) * xStep, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = i * xStep;
+    const y = H - (p.pct / 100) * (H - 8) - 4;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#6366f1';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Dots
+  pts.forEach((p, i) => {
+    const x = i * xStep;
+    const y = H - (p.pct / 100) * (H - 8) - 4;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#818cf8';
+    ctx.fill();
+  });
+}
+
+/* ─── Status / Signal / Memory ──────────────────────────────────────────── */
 function updateStatus(data) {
   // Connection badge
   const badge = document.getElementById('connBadge');
   if (data.modem_connected) {
-    badge.className = 'badge rounded-pill bg-success';
-    badge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>Connected';
+    badge.className = 'status-pill status-connected';
+    badge.innerHTML = '<span class="status-dot"></span><span class="status-label">Connected</span>';
   } else {
-    badge.className = 'badge rounded-pill bg-danger';
-    badge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>Disconnected';
+    badge.className = 'status-pill status-error';
+    badge.innerHTML = '<span class="status-dot"></span><span class="status-label">Disconnected</span>';
   }
 
-  // Meta
-  document.getElementById('deviceLabel').textContent = data.device || '–';
-  document.getElementById('lastUpdated').textContent = data.last_updated
-    ? new Date(data.last_updated).toLocaleTimeString()
-    : '–';
+  document.getElementById('deviceLabel').textContent  = data.device || '–';
+  document.getElementById('lastUpdated').textContent  = fmtTime(data.last_updated);
 
   // Signal
-  const sig = data.signal || {};
-  const pct = sig.percent || 0;
-  const qClass = qualityClass(sig.quality || '');
+  const sig  = data.signal || {};
+  const pct  = sig.percent || 0;
+  const qCls = qualityClass(sig.quality || '');
 
   document.getElementById('sigPercent').textContent = pct;
   document.getElementById('sigRssi').textContent = sig.rssi !== undefined ? sig.rssi : '–';
-  document.getElementById('sigDbm').textContent = sig.dbm !== null && sig.dbm !== undefined ? `${sig.dbm} dBm` : '–';
-  document.getElementById('sigBer').textContent = sig.ber !== undefined ? sig.ber : '–';
+  document.getElementById('sigDbm').textContent  = sig.dbm !== null && sig.dbm !== undefined ? `${sig.dbm} dBm` : '–';
+  document.getElementById('sigBer').textContent  = sig.ber !== undefined ? sig.ber : '–';
 
   const qBadge = document.getElementById('sigQuality');
   qBadge.textContent = sig.quality || '–';
-  qBadge.className = `badge fs-6 mb-1 badge-${qClass}`;
+  qBadge.className   = `quality-badge quality-${qCls}`;
 
-  const sigBar = document.getElementById('sigBar');
-  sigBar.style.width = pct + '%';
-  sigBar.className = `progress-bar sig-${qClass}`;
+  updateGauge(pct, sig.quality || '');
+
+  // Sparkline history
+  _sparkHistory.push({ pct, ts: data.last_updated });
+  if (_sparkHistory.length > SPARK_MAX) _sparkHistory.shift();
+  drawSparkline();
 
   // Memory
-  const mem = data.memory || {};
-  document.getElementById('memUsed').textContent = mem.used !== undefined ? mem.used : '–';
-  document.getElementById('memTotal').textContent = mem.total !== undefined ? mem.total : '–';
-  document.getElementById('memUsed2').textContent = mem.used !== undefined ? mem.used : '–';
-  document.getElementById('memFree').textContent = mem.free !== undefined ? mem.free : '–';
-  document.getElementById('memTotal2').textContent = mem.total !== undefined ? mem.total : '–';
-
+  const mem    = data.memory || {};
   const memPct = mem.percent_used || 0;
-  const memBar = document.getElementById('memBar');
-  memBar.style.width = memPct + '%';
-  memBar.className = 'progress-bar ' + (memPct >= 90 ? 'mem-crit' : memPct >= 70 ? 'mem-warn' : 'mem-ok');
+  document.getElementById('memUsed').textContent   = mem.used  !== undefined ? mem.used  : '–';
+  document.getElementById('memTotal').textContent  = mem.total !== undefined ? mem.total : '–';
+  document.getElementById('memUsed2').textContent  = mem.used  !== undefined ? mem.used  : '–';
+  document.getElementById('memFree').textContent   = mem.free  !== undefined ? mem.free  : '–';
+  document.getElementById('memTotal2').textContent = mem.total !== undefined ? mem.total : '–';
+  document.getElementById('memPctLabel').textContent = memPct + '%';
+
+  const bar = document.getElementById('memBar');
+  bar.style.width = memPct + '%';
+  bar.className   = 'mem-bar-fill' + (memPct >= 90 ? ' crit' : memPct >= 70 ? ' warn' : '');
 
   // Modem info
   const info = data.modem_info || {};
-  document.getElementById('infoManuf').textContent = info.manufacturer || '–';
-  document.getElementById('infoModel').textContent = info.model || '–';
-  document.getElementById('infoImei').textContent = info.imei || '–';
-  document.getElementById('infoNet').textContent = info.network_status || '–';
+  document.getElementById('infoManuf').textContent = info.manufacturer  || '–';
+  document.getElementById('infoModel').textContent = info.model         || '–';
+  document.getElementById('infoImei').textContent  = info.imei          || '–';
+  document.getElementById('infoNet').textContent   = info.network_status || '–';
 }
 
-/* ─── SMS ────────────────────────────────────────────────────────────────── */
-function renderSms(smsList) {
-  const container = document.getElementById('smsContainer');
-  const empty = document.getElementById('smsEmpty');
-  document.getElementById('smsBadge').textContent = smsList.length;
+/* ─── SMS rendering ──────────────────────────────────────────────────────── */
+function smsItemHtml(msg, idx, compact = false) {
+  const isUnread = (msg.status || '').toUpperCase().includes('UNREAD');
+  const sender   = msg.sender || 'Unknown';
+  const initial  = sender.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || '?';
+  const ts       = fmtDateTime(msg.timestamp);
+  const newBadge = isUnread ? '<span class="new-badge">NEW</span>' : '';
 
-  if (!smsList.length) {
-    container.innerHTML = '';
-    container.appendChild(empty);
-    empty.style.display = '';
-    return;
+  if (compact) {
+    return `
+      <div class="ov-sms-preview">
+        <div class="sms-avatar" style="width:34px;height:34px;font-size:.85rem">${initial}</div>
+        <div class="sms-meta">
+          <div class="sms-sender">${escHtml(sender)}${newBadge}</div>
+          <div class="sms-time">${escHtml(ts)}</div>
+          <div class="sms-body">${escHtml((msg.message || '').slice(0, 80))}${msg.message && msg.message.length > 80 ? '…' : ''}</div>
+        </div>
+      </div>`;
   }
-  empty.style.display = 'none';
 
-  // Build list
-  const frag = document.createDocumentFragment();
-  smsList.forEach((msg, idx) => {
-    const isUnread = (msg.status || '').toUpperCase().includes('UNREAD');
-    const sender = msg.sender || 'Unknown';
-    const initial = sender.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || '?';
-    const ts = msg.timestamp
-      ? (() => { try { return new Date(msg.timestamp).toLocaleString(); } catch { return msg.timestamp; } })()
-      : '';
-
-    const item = document.createElement('div');
-    item.className = `sms-item ${isUnread ? 'unread' : 'read'}`;
-    item.dataset.idx = idx;
-    item.innerHTML = `
+  return `
+    <div class="sms-item ${isUnread ? 'unread' : 'read'}">
       <div class="sms-avatar">${initial}</div>
       <div class="sms-meta">
-        <div class="d-flex align-items-center gap-2">
-          <span class="sms-sender">${escHtml(sender)}</span>
-          ${isUnread ? '<span class="badge bg-primary" style="font-size:.65rem">NEW</span>' : ''}
+        <div class="d-flex align-items-center gap-1">
+          <span class="sms-sender">${escHtml(sender)}</span>${newBadge}
         </div>
         <div class="sms-time">${escHtml(ts)}</div>
         <div class="sms-body">${escHtml(msg.message || '')}</div>
       </div>
       <div class="sms-actions">
-        <button class="btn btn-sm btn-outline-danger btn-del-sms" data-idx="${idx}" title="Delete">
+        <button class="icon-btn btn-del-sms" data-idx="${idx}" title="Delete message" style="border-color:rgba(239,68,68,.3);color:#ef4444">
           <i class="bi bi-trash3"></i>
         </button>
-      </div>`;
-    frag.appendChild(item);
-  });
+      </div>
+    </div>`;
+}
 
-  container.innerHTML = '';
-  container.appendChild(frag);
+function renderSms(smsList) {
+  _smsList = smsList;
+  const count = smsList.length;
 
-  // Bind delete buttons
-  container.querySelectorAll('.btn-del-sms').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const i = parseInt(btn.dataset.idx, 10);
-      await deleteSms(i);
+  // Badge on tab
+  document.getElementById('smsBadge').textContent = count;
+
+  // ── Full SMS tab ──
+  const container = document.getElementById('smsContainer');
+  if (!count) {
+    container.innerHTML = `<div class="empty-state py-5" id="smsEmpty">
+      <i class="bi bi-inbox display-5"></i><p>No messages in inbox</p></div>`;
+  } else {
+    container.innerHTML = smsList.map((m, i) => smsItemHtml(m, i)).join('');
+    container.querySelectorAll('.btn-del-sms').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteSms(parseInt(btn.dataset.idx, 10));
+      });
     });
-  });
+  }
+
+  // ── Overview preview ──
+  renderOvSms(smsList);
+}
+
+function renderOvSms(smsList) {
+  const el    = document.getElementById('ovSmsList');
+  const empty = document.getElementById('ovSmsEmpty');
+  if (!smsList.length) {
+    el.innerHTML = '';
+    el.appendChild(empty || createEmpty('bi-inbox', 'No messages yet'));
+    return;
+  }
+  el.innerHTML = smsList.slice(0, OV_SMS_MAX).map((m, i) => smsItemHtml(m, i, true)).join('');
+}
+
+function createEmpty(icon, text) {
+  const d = document.createElement('div');
+  d.className = 'empty-state';
+  d.innerHTML = `<i class="bi ${icon}"></i><p>${text}</p>`;
+  return d;
 }
 
 async function deleteSms(idx) {
   try {
     const r = await fetch(`${API}/api/sms/${idx}`, { method: 'DELETE' });
-    if (r.ok) {
-      showToast('SMS deleted', 'success');
-      await fetchSms();
-    } else {
-      showToast('Failed to delete SMS', 'danger');
-    }
-  } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
-  }
+    if (r.ok) { showToast('SMS deleted', 'success'); await fetchSms(); }
+    else        showToast('Failed to delete SMS', 'danger');
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
 }
 
 async function clearAllSms() {
   if (!confirm('Delete all SMS messages?')) return;
   try {
     const r = await fetch(`${API}/api/sms`, { method: 'DELETE' });
-    if (r.ok) {
-      showToast('All SMS cleared', 'success');
-      await fetchSms();
-    }
-  } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
-  }
+    if (r.ok) { showToast('All SMS cleared', 'success'); await fetchSms(); }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
 }
 
-/* ─── Event Log ──────────────────────────────────────────────────────────── */
-function renderLog(logs) {
-  const container = document.getElementById('logContainer');
-  const empty = document.getElementById('logEmpty');
-
-  if (!logs.length) {
-    container.innerHTML = '';
-    container.appendChild(empty);
-    empty.style.display = '';
-    return;
-  }
-  empty.style.display = 'none';
-
-  const frag = document.createDocumentFragment();
-  // Show newest first
-  [...logs].reverse().forEach(entry => {
-    const ts = entry.timestamp
-      ? (() => { try { return new Date(entry.timestamp).toLocaleTimeString(); } catch { return entry.timestamp; } })()
-      : '';
-    const level = (entry.level || 'INFO').toUpperCase();
-    const div = document.createElement('div');
-    div.className = `log-entry log-${level}`;
-    div.innerHTML = `
+/* ─── Log rendering ──────────────────────────────────────────────────────── */
+function logEntryHtml(entry) {
+  const ts    = fmtTime(entry.timestamp);
+  const level = (entry.level || 'INFO').toUpperCase();
+  return `
+    <div class="log-entry log-${level}" data-level="${level}">
       <span class="log-ts">${escHtml(ts)}</span>
       <span class="log-level">[${level}]</span>
-      <span class="log-msg">${escHtml(entry.message || '')}</span>`;
-    frag.appendChild(div);
-  });
+      <span class="log-msg">${escHtml(entry.message || '')}</span>
+    </div>`;
+}
 
-  container.innerHTML = '';
-  container.appendChild(frag);
+function applyLogFilter() {
+  document.querySelectorAll('#logContainer .log-entry').forEach(el => {
+    const lv = el.dataset.level;
+    el.classList.toggle('hidden', _logFilter !== 'ALL' && lv !== _logFilter);
+  });
+}
+
+function renderLog(logs) {
+  _logList = logs;
+
+  // Warning badge on tab
+  const hasError = logs.some(l => (l.level || '').toUpperCase() === 'ERROR');
+  const logBadge = document.getElementById('logBadge');
+  logBadge.classList.toggle('d-none', !hasError);
+
+  // ── Full log tab ──
+  const container = document.getElementById('logContainer');
+  if (!logs.length) {
+    container.innerHTML = `<div class="empty-state py-5" id="logEmpty">
+      <i class="bi bi-terminal display-5"></i><p>No log entries</p></div>`;
+  } else {
+    // Newest first
+    container.innerHTML = [...logs].reverse().map(logEntryHtml).join('');
+    applyLogFilter();
+  }
+
+  // ── Overview preview ──
+  renderOvLog(logs);
+}
+
+function renderOvLog(logs) {
+  const el = document.getElementById('ovLogList');
+  if (!logs.length) {
+    el.innerHTML = '<div class="empty-state"><i class="bi bi-terminal"></i><p>No events yet</p></div>';
+    return;
+  }
+  el.innerHTML = [...logs].reverse().slice(0, OV_LOG_MAX).map(logEntryHtml).join('');
 }
 
 async function clearLog() {
@@ -236,9 +382,7 @@ async function clearLog() {
     await fetch(`${API}/api/logs`, { method: 'DELETE' });
     renderLog([]);
     showToast('Log cleared', 'info');
-  } catch (err) {
-    showToast('Network error: ' + err.message, 'danger');
-  }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
 }
 
 /* ─── Data fetching ──────────────────────────────────────────────────────── */
@@ -247,9 +391,7 @@ async function fetchStatus() {
     const r = await fetch(`${API}/api/status`);
     if (!r.ok) throw new Error(r.statusText);
     updateStatus(await r.json());
-  } catch (err) {
-    console.warn('fetchStatus error:', err);
-  }
+  } catch (err) { console.warn('fetchStatus error:', err); }
 }
 
 async function fetchSms() {
@@ -258,9 +400,7 @@ async function fetchSms() {
     if (!r.ok) throw new Error(r.statusText);
     const { sms } = await r.json();
     renderSms(sms || []);
-  } catch (err) {
-    console.warn('fetchSms error:', err);
-  }
+  } catch (err) { console.warn('fetchSms error:', err); }
 }
 
 async function fetchLogs() {
@@ -269,33 +409,17 @@ async function fetchLogs() {
     if (!r.ok) throw new Error(r.statusText);
     const { logs } = await r.json();
     renderLog(logs || []);
-  } catch (err) {
-    console.warn('fetchLogs error:', err);
-  }
+  } catch (err) { console.warn('fetchLogs error:', err); }
 }
 
 async function refreshAll() {
   await Promise.all([fetchStatus(), fetchSms(), fetchLogs()]);
 }
 
-/* ─── Manual refresh button ─────────────────────────────────────────────── */
-document.getElementById('btnRefresh').addEventListener('click', async () => {
-  resetCountdown();
-  try {
-    await fetch(`${API}/api/refresh`, { method: 'POST' });
-  } catch (_) { /* ignore */ }
-  await refreshAll();
-  showToast('Refreshed', 'success');
-});
-
-/* ─── Clear buttons ──────────────────────────────────────────────────────── */
-document.getElementById('btnClearSms').addEventListener('click', clearAllSms);
-document.getElementById('btnClearLog').addEventListener('click', clearLog);
-
-/* ─── Auto-refresh countdown ─────────────────────────────────────────────── */
+/* ─── Countdown & auto-refresh ───────────────────────────────────────────── */
 function resetCountdown() {
   countdown = REFRESH_INTERVAL;
-  document.getElementById('countdown').textContent = countdown;
+  updateRing(countdown);
 }
 
 function tickCountdown() {
@@ -304,21 +428,45 @@ function tickCountdown() {
     resetCountdown();
     refreshAll();
   } else {
-    document.getElementById('countdown').textContent = countdown;
+    updateRing(countdown);
   }
 }
 
-/* ─── Utility ────────────────────────────────────────────────────────────── */
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+/* ─── Button wiring ──────────────────────────────────────────────────────── */
+document.getElementById('btnRefresh').addEventListener('click', async () => {
+  resetCountdown();
+  try { await fetch(`${API}/api/refresh`, { method: 'POST' }); } catch (_) { /* ignore */ }
+  await refreshAll();
+  showToast('Refreshed', 'success');
+});
+
+document.getElementById('btnClearSms').addEventListener('click', clearAllSms);
+document.getElementById('btnClearLog').addEventListener('click', clearLog);
+
+// Overview "View all" shortcuts
+document.getElementById('ovBtnViewAllSms').addEventListener('click', () => {
+  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-sms')).show();
+});
+document.getElementById('ovBtnViewAllLog').addEventListener('click', () => {
+  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-log')).show();
+});
+
+// Log filter buttons
+document.getElementById('logFilters').addEventListener('click', e => {
+  const btn = e.target.closest('.lf-btn');
+  if (!btn) return;
+  document.querySelectorAll('.lf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _logFilter = btn.dataset.level;
+  applyLogFilter();
+});
+
+// Redraw sparkline on window resize
+window.addEventListener('resize', drawSparkline);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  updateRing(REFRESH_INTERVAL);
   refreshAll();
-  refreshTimer = setInterval(tickCountdown, 1000);
+  setInterval(tickCountdown, 1000);
 });

@@ -19,7 +19,7 @@ reloaded automatically when the container restarts.
 
 ## Screenshot
 
-![USB Modem Dashboard – dark mode](https://github.com/user-attachments/assets/dcf87dbd-338e-4e44-a5c5-be5f3a3de2f8)
+![USB Modem Dashboard – dark mode](https://github.com/user-attachments/assets/78569a93-e53a-4e32-b8fe-9ecb6c808f22)
 
 ---
 

@@ -6,208 +6,284 @@
   <title>USB Modem Dashboard</title>
 
   <!-- Bootstrap 5.3 -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-    crossorigin="anonymous"
-  />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous" />
   <!-- Bootstrap Icons -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
-    rel="stylesheet"
-    crossorigin="anonymous"
-  />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" crossorigin="anonymous" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- ─── Navbar ──────────────────────────────────────────────────────────── -->
-<nav class="navbar navbar-expand-lg px-3 py-2 border-bottom">
-  <span class="navbar-brand fw-bold fs-5 d-flex align-items-center gap-2">
-    <i class="bi bi-broadcast-pin text-primary"></i>
-    USB Modem Dashboard
-  </span>
-  <div class="ms-auto d-flex align-items-center gap-3">
-    <!-- connection badge -->
-    <span id="connBadge" class="badge rounded-pill bg-secondary">
-      <i class="bi bi-circle-fill me-1"></i>Connecting…
-    </span>
-    <!-- auto-refresh countdown -->
-    <span class="text-secondary small d-flex align-items-center gap-1">
-      <i class="bi bi-arrow-repeat"></i>
-      <span id="countdown">5</span>s
-    </span>
-    <!-- manual refresh -->
-    <button id="btnRefresh" class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1">
-      <i class="bi bi-arrow-clockwise"></i> Refresh
-    </button>
-    <!-- theme toggle -->
-    <button id="btnTheme" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" title="Toggle theme">
-      <i class="bi bi-moon-stars-fill"></i>
-    </button>
-  </div>
-</nav>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TOP NAV
+════════════════════════════════════════════════════════════════════════ -->
+<header class="dash-header">
+  <div class="dash-header-inner">
 
-<!-- ─── Main content ─────────────────────────────────────────────────────── -->
-<div class="container-fluid py-4 px-4">
-
-  <!-- Last updated -->
-  <div class="text-secondary small mb-3">
-    Device: <code id="deviceLabel">–</code>
-    &nbsp;|&nbsp;
-    Last updated: <span id="lastUpdated">–</span>
-  </div>
-
-  <!-- Row 1: Signal + Memory cards -->
-  <div class="row g-3 mb-3">
-
-    <!-- Signal Strength -->
-    <div class="col-12 col-md-6 col-xl-4">
-      <div class="card h-100">
-        <div class="card-body">
-          <h6 class="card-title text-uppercase text-secondary mb-3">
-            <i class="bi bi-reception-4 me-1"></i>Signal Strength
-          </h6>
-          <div class="d-flex align-items-end gap-3 mb-3">
-            <span id="sigPercent" class="display-4 fw-bold">–</span>
-            <span class="text-secondary mb-1">%</span>
-            <span id="sigQuality" class="badge fs-6 mb-1">–</span>
-          </div>
-          <div class="progress mb-2" style="height:10px">
-            <div id="sigBar" class="progress-bar" role="progressbar" style="width:0%"></div>
-          </div>
-          <div class="row text-center mt-2 small">
-            <div class="col">
-              <div class="text-secondary">RSSI</div>
-              <div id="sigRssi" class="fw-semibold">–</div>
-            </div>
-            <div class="col">
-              <div class="text-secondary">dBm</div>
-              <div id="sigDbm" class="fw-semibold">–</div>
-            </div>
-            <div class="col">
-              <div class="text-secondary">BER</div>
-              <div id="sigBer" class="fw-semibold">–</div>
-            </div>
-          </div>
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-icon">
+        <i class="bi bi-broadcast-pin"></i>
+      </div>
+      <div>
+        <div class="brand-title">USB Modem Dashboard</div>
+        <div class="brand-sub">
+          <code id="deviceLabel">–</code>
         </div>
       </div>
     </div>
 
-    <!-- SMS Memory -->
-    <div class="col-12 col-md-6 col-xl-4">
-      <div class="card h-100">
-        <div class="card-body">
-          <h6 class="card-title text-uppercase text-secondary mb-3">
-            <i class="bi bi-sd-card me-1"></i>SIM SMS Memory
-          </h6>
-          <div class="d-flex align-items-end gap-3 mb-3">
-            <span id="memUsed" class="display-4 fw-bold">–</span>
-            <span class="text-secondary mb-1 fs-5">/ <span id="memTotal">–</span></span>
-          </div>
-          <div class="progress mb-2" style="height:10px">
-            <div id="memBar" class="progress-bar" role="progressbar" style="width:0%"></div>
-          </div>
-          <div class="row text-center mt-2 small">
-            <div class="col">
-              <div class="text-secondary">Used</div>
-              <div id="memUsed2" class="fw-semibold">–</div>
-            </div>
-            <div class="col">
-              <div class="text-secondary">Free</div>
-              <div id="memFree" class="fw-semibold">–</div>
-            </div>
-            <div class="col">
-              <div class="text-secondary">Total</div>
-              <div id="memTotal2" class="fw-semibold">–</div>
-            </div>
+    <!-- Right controls -->
+    <div class="header-controls">
+      <!-- Status pill -->
+      <div id="connBadge" class="status-pill status-unknown">
+        <span class="status-dot"></span>
+        <span class="status-label">Connecting…</span>
+      </div>
+
+      <!-- Refresh ring -->
+      <div class="refresh-ring" title="Auto-refresh">
+        <svg viewBox="0 0 36 36" class="ring-svg">
+          <circle class="ring-bg" cx="18" cy="18" r="15"/>
+          <circle id="ringProgress" class="ring-fg" cx="18" cy="18" r="15"
+                  stroke-dasharray="94.25 94.25" stroke-dashoffset="0"/>
+        </svg>
+        <span id="countdown" class="ring-label">5</span>
+      </div>
+
+      <!-- Manual refresh -->
+      <button id="btnRefresh" class="icon-btn" title="Refresh now">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+
+      <!-- Theme toggle -->
+      <button id="btnTheme" class="icon-btn" title="Toggle theme">
+        <i class="bi bi-moon-stars-fill"></i>
+      </button>
+
+      <!-- Last updated -->
+      <div class="last-updated text-secondary small d-none d-lg-block">
+        Updated <span id="lastUpdated">–</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STAT CARDS ROW  (always visible above tabs)
+════════════════════════════════════════════════════════════════════════ -->
+<div class="stats-bar">
+  <div class="stats-grid">
+
+    <!-- Signal Strength -->
+    <div class="stat-card stat-card--signal">
+      <div class="stat-card-label">
+        <i class="bi bi-reception-4"></i> Signal Strength
+      </div>
+      <div class="stat-card-body">
+        <!-- SVG arc gauge -->
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 120 70">
+            <path class="gauge-track" d="M10,65 A50,50 0 0,1 110,65"/>
+            <path id="gaugeSig" class="gauge-fill gauge-fill--sig" d="M10,65 A50,50 0 0,1 110,65"
+                  stroke-dasharray="157 157" stroke-dashoffset="157"/>
+          </svg>
+          <div class="gauge-center">
+            <span id="sigPercent" class="gauge-value">–</span>
+            <span class="gauge-unit">%</span>
           </div>
         </div>
+        <span id="sigQuality" class="quality-badge quality-unknown">–</span>
+      </div>
+      <div class="stat-card-footer">
+        <div class="stat-kv"><span>RSSI</span><strong id="sigRssi">–</strong></div>
+        <div class="stat-divider"></div>
+        <div class="stat-kv"><span>dBm</span><strong id="sigDbm">–</strong></div>
+        <div class="stat-divider"></div>
+        <div class="stat-kv"><span>BER</span><strong id="sigBer">–</strong></div>
+      </div>
+    </div>
+
+    <!-- SIM Memory -->
+    <div class="stat-card stat-card--mem">
+      <div class="stat-card-label">
+        <i class="bi bi-sim"></i> SIM SMS Memory
+      </div>
+      <div class="stat-card-body stat-card-body--mem">
+        <div class="mem-big">
+          <span id="memUsed" class="mem-num">–</span>
+          <span class="mem-sep">/ <span id="memTotal">–</span></span>
+        </div>
+        <div class="mem-bar-wrap">
+          <div class="mem-bar-track">
+            <div id="memBar" class="mem-bar-fill" style="width:0%"></div>
+          </div>
+          <span id="memPctLabel" class="mem-pct">0%</span>
+        </div>
+      </div>
+      <div class="stat-card-footer">
+        <div class="stat-kv"><span>Used</span><strong id="memUsed2">–</strong></div>
+        <div class="stat-divider"></div>
+        <div class="stat-kv"><span>Free</span><strong id="memFree">–</strong></div>
+        <div class="stat-divider"></div>
+        <div class="stat-kv"><span>Total</span><strong id="memTotal2">–</strong></div>
       </div>
     </div>
 
     <!-- Modem Info -->
-    <div class="col-12 col-md-6 col-xl-4">
-      <div class="card h-100">
-        <div class="card-body">
-          <h6 class="card-title text-uppercase text-secondary mb-3">
-            <i class="bi bi-router me-1"></i>Modem Info
-          </h6>
-          <table class="table table-sm table-borderless mb-0 small">
-            <tbody>
-              <tr>
-                <td class="text-secondary">Manufacturer</td>
-                <td id="infoManuf" class="fw-semibold">–</td>
-              </tr>
-              <tr>
-                <td class="text-secondary">Model</td>
-                <td id="infoModel" class="fw-semibold">–</td>
-              </tr>
-              <tr>
-                <td class="text-secondary">IMEI</td>
-                <td id="infoImei" class="fw-semibold">–</td>
-              </tr>
-              <tr>
-                <td class="text-secondary">Network</td>
-                <td id="infoNet" class="fw-semibold">–</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <div class="stat-card stat-card--info">
+      <div class="stat-card-label">
+        <i class="bi bi-router"></i> Modem Info
+      </div>
+      <div class="stat-card-body stat-card-body--info">
+        <dl class="info-dl">
+          <dt>Manufacturer</dt><dd id="infoManuf">–</dd>
+          <dt>Model</dt>       <dd id="infoModel">–</dd>
+          <dt>IMEI</dt>        <dd id="infoImei" class="font-monospace small">–</dd>
+          <dt>Network</dt>     <dd id="infoNet">–</dd>
+        </dl>
       </div>
     </div>
-  </div>
 
-  <!-- Row 2: SMS Inbox + Event Log -->
-  <div class="row g-3">
+  </div><!-- /stats-grid -->
+</div><!-- /stats-bar -->
 
-    <!-- SMS Inbox -->
-    <div class="col-12 col-xl-7">
-      <div class="card">
-        <div class="card-header d-flex align-items-center justify-content-between">
-          <span class="fw-semibold">
-            <i class="bi bi-envelope me-1"></i>
-            SMS Inbox
-            <span id="smsBadge" class="badge bg-primary ms-1">0</span>
-          </span>
-          <button id="btnClearSms" class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MAIN TABBED CONTENT
+════════════════════════════════════════════════════════════════════════ -->
+<div class="main-content">
+
+  <!-- Tab navigation (pill style) -->
+  <ul class="dash-tabs nav" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="dash-tab-btn active" id="tab-overview"
+              data-bs-toggle="tab" data-bs-target="#pane-overview"
+              type="button" role="tab">
+        <i class="bi bi-grid-1x2"></i>
+        <span>Overview</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="dash-tab-btn" id="tab-sms"
+              data-bs-toggle="tab" data-bs-target="#pane-sms"
+              type="button" role="tab">
+        <i class="bi bi-envelope"></i>
+        <span>SMS Inbox</span>
+        <span id="smsBadge" class="tab-badge">0</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="dash-tab-btn" id="tab-log"
+              data-bs-toggle="tab" data-bs-target="#pane-log"
+              type="button" role="tab">
+        <i class="bi bi-terminal"></i>
+        <span>Event Log</span>
+        <span id="logBadge" class="tab-badge tab-badge--warn d-none">!</span>
+      </button>
+    </li>
+  </ul>
+
+  <!-- Tab panes -->
+  <div class="tab-content dash-tab-content">
+
+    <!-- ── Overview ─────────────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="pane-overview" role="tabpanel">
+      <div class="overview-grid">
+
+        <!-- Quick-stats column -->
+        <div class="ov-col-main">
+
+          <!-- Signal history timeline (last 20 polls) -->
+          <div class="panel">
+            <div class="panel-hdr">
+              <span><i class="bi bi-activity me-2"></i>Signal History</span>
+              <span class="panel-hdr-sub">last 20 polls</span>
+            </div>
+            <div class="panel-body sparkline-wrap">
+              <canvas id="sparkCanvas" height="60"></canvas>
+            </div>
+          </div>
+
+          <!-- Recent SMS preview -->
+          <div class="panel mt-3">
+            <div class="panel-hdr">
+              <span><i class="bi bi-envelope me-2"></i>Recent Messages</span>
+              <button class="panel-link" id="ovBtnViewAllSms">View all <i class="bi bi-arrow-right"></i></button>
+            </div>
+            <div id="ovSmsList" class="ov-sms-list">
+              <div class="empty-state" id="ovSmsEmpty">
+                <i class="bi bi-inbox"></i>
+                <p>No messages yet</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent log column -->
+        <div class="ov-col-side">
+          <div class="panel h-100">
+            <div class="panel-hdr">
+              <span><i class="bi bi-journal-text me-2"></i>Recent Events</span>
+              <button class="panel-link" id="ovBtnViewAllLog">View all <i class="bi bi-arrow-right"></i></button>
+            </div>
+            <div id="ovLogList" class="ov-log-list font-monospace small">
+              <div class="empty-state" id="ovLogEmpty">
+                <i class="bi bi-terminal"></i>
+                <p>No events yet</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /pane-overview -->
+
+    <!-- ── SMS Inbox ─────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="pane-sms" role="tabpanel">
+      <div class="panel">
+        <div class="panel-hdr">
+          <span><i class="bi bi-envelope me-2"></i>SMS Inbox</span>
+          <button id="btnClearSms" class="btn btn-sm btn-danger-ghost d-flex align-items-center gap-1">
             <i class="bi bi-trash3"></i> Clear All
           </button>
         </div>
-        <div class="card-body p-0">
-          <div id="smsContainer" class="sms-container">
-            <div class="text-center text-secondary py-5" id="smsEmpty">
-              <i class="bi bi-inbox display-6 d-block mb-2"></i>
-              No messages
-            </div>
+        <div id="smsContainer" class="sms-container panel-body-flush">
+          <div class="empty-state py-5" id="smsEmpty">
+            <i class="bi bi-inbox display-5"></i>
+            <p>No messages in inbox</p>
           </div>
         </div>
       </div>
-    </div>
+    </div><!-- /pane-sms -->
 
-    <!-- Event Log -->
-    <div class="col-12 col-xl-5">
-      <div class="card">
-        <div class="card-header d-flex align-items-center justify-content-between">
-          <span class="fw-semibold">
-            <i class="bi bi-journal-text me-1"></i>Event Log
-          </span>
-          <button id="btnClearLog" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
-            <i class="bi bi-x-circle"></i> Clear
-          </button>
-        </div>
-        <div class="card-body p-0">
-          <div id="logContainer" class="log-container font-monospace small">
-            <div class="text-center text-secondary py-4" id="logEmpty">
-              <i class="bi bi-terminal display-6 d-block mb-2"></i>No log entries
+    <!-- ── Event Log ─────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="pane-log" role="tabpanel">
+      <div class="panel">
+        <div class="panel-hdr">
+          <span><i class="bi bi-terminal me-2"></i>Event Log</span>
+          <div class="d-flex align-items-center gap-2">
+            <!-- filter pills -->
+            <div class="log-filter-group" id="logFilters">
+              <button class="lf-btn active" data-level="ALL">All</button>
+              <button class="lf-btn" data-level="INFO">Info</button>
+              <button class="lf-btn" data-level="WARNING">Warn</button>
+              <button class="lf-btn" data-level="ERROR">Error</button>
             </div>
+            <button id="btnClearLog" class="btn btn-sm btn-ghost d-flex align-items-center gap-1">
+              <i class="bi bi-x-circle"></i> Clear
+            </button>
+          </div>
+        </div>
+        <div id="logContainer" class="log-container panel-body-flush font-monospace small">
+          <div class="empty-state py-5" id="logEmpty">
+            <i class="bi bi-terminal display-5"></i>
+            <p>No log entries</p>
           </div>
         </div>
       </div>
-    </div>
+    </div><!-- /pane-log -->
 
-  </div>
-</div>
+  </div><!-- /tab-content -->
+</div><!-- /main-content -->
 
 <!-- Toast notifications -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastArea"></div>
