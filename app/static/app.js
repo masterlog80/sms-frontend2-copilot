@@ -16,6 +16,7 @@ let _signalHistory = [];
 let _signalRangeMinutes = 10;
 let _signalChart = null;
 let _signalHistoryLastTs = null;
+let _miniSignalChart = null;
 
 /* ─── Theme ──────────────────────────────────────────────────────────────── */
 const html    = document.documentElement;
@@ -284,6 +285,63 @@ function updateChartTheme(theme) {
   _signalChart.update('none');
 }
 
+function initMiniSignalChart() {
+  const ctx = document.getElementById('signalMiniChart');
+  if (!ctx) return;
+  _miniSignalChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: [],
+        borderColor: CHART_COLORS.line,
+        backgroundColor: CHART_COLORS.fill,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 1.5,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'HH:mm:ss', displayFormats: { second: 'HH:mm:ss', minute: 'HH:mm' } },
+          grid: { display: false },
+          ticks: { display: false },
+          border: { display: false },
+        },
+        y: {
+          min: 0,
+          max: 100,
+          grid: { display: false },
+          ticks: { display: false },
+          border: { display: false },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` Signal: ${ctx.parsed.y}%`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function _updateMiniChart() {
+  if (!_miniSignalChart) return;
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  const visible = _signalHistory.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+  _miniSignalChart.data.datasets[0].data = visible.map(e => ({ x: e.timestamp, y: e.percent }));
+  _miniSignalChart.update('none');
+}
+
 function _buildChartData() {
   if (!_signalChart) return;
   const cutoff = Date.now() - _signalRangeMinutes * 60 * 1000;
@@ -293,6 +351,7 @@ function _buildChartData() {
     .filter(e => e.dbm !== null && e.dbm !== undefined)
     .map(e => ({ x: e.timestamp, y: e.dbm }));
   _signalChart.update();
+  _updateMiniChart();
 }
 
 function pushSignalPoint(signal, timestamp) {
@@ -520,6 +579,7 @@ document.getElementById('logFilters').addEventListener('click', e => {
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initSignalChart();
+  initMiniSignalChart();
   updateRing(REFRESH_INTERVAL);
   fetchSignalHistory().then(() => refreshAll());
   setInterval(tickCountdown, 1000);

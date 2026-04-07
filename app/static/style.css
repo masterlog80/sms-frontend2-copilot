@@ -544,6 +544,14 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 .lf-btn:hover { border-color: var(--accent); color: var(--text); }
 .lf-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* ─── Signal mini sparkline (inside stat card) ──────────────────────────── */
+.signal-mini-wrap {
+  height: 60px;
+  position: relative;
+  margin: 0 -0.1rem;
+}
+.signal-mini-wrap canvas { display: block; }
+
 /* ─── Signal Strength chart ─────────────────────────────────────────────── */
 .signal-chart-wrap {
   padding: 1rem 1rem 1.25rem;
