@@ -568,7 +568,7 @@ function renderNetworkList(networks, current) {
   let html = `
     <div class="network-item ${autoSelected ? 'net-selected' : ''}" data-mode="auto">
       <div class="net-name">
-        <i class="bi bi-magic me-1 opacity-75"></i>
+        <i class="bi bi-arrow-repeat me-1 opacity-75"></i>
         <strong>Auto</strong>
         <span class="net-sub text-muted ms-1">– automatic selection</span>
       </div>
