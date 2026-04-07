@@ -16,6 +16,28 @@ The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device
 History, received SMS and logs are **persisted to a Docker volume** and
 reloaded automatically when the container restarts.
 
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/masterlog80/sms-frontend2-copilot.git
+cd sms-frontend2-copilot
+
+# 2. Build and start the container (first run builds the image)
+yes | docker image prune --all
+docker build -t modem-dashboard .
+docker compose up -d --build
+
+# 3. Deploy the composer file:
+docker compose -f docker-compose.yml up -d --remove-orphans
+
+# 4. Open the dashboard
+```
+
+
 ---
 
 ## Screenshots
@@ -63,24 +85,6 @@ reloaded automatically when the container restarts.
 > interfaces.  If AT commands don't work on `ttyUSB0`, try `ttyUSB1` or
 > `ttyUSB2` by changing the `MODEM_DEVICE` environment variable in
 > `docker-compose.yml`.
-
----
-
-## Quick Start
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/masterlog80/sms-frontend2-copilot.git
-cd sms-frontend2-copilot
-
-# 2. Build and start the container (first run builds the image)
-docker compose up -d --build
-
-# 3. Open the dashboard
-open http://localhost:5000       # macOS
-xdg-open http://localhost:5000   # Linux
-# or navigate to http://<host-ip>:5000 from any browser on your network
-```
 
 ---
 
