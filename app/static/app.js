@@ -77,24 +77,26 @@ function qualityClass(quality) {
   return { Excellent: 'excellent', Good: 'good', Fair: 'fair', Poor: 'poor', 'Very Poor': 'verypoor' }[quality] || 'unknown';
 }
 
-/* ─── SVG gauge ──────────────────────────────────────────────────────────── */
-// The gauge arc path "M10,65 A50,50 0 0,1 110,65" has circumference ≈ 157.
-const GAUGE_LEN = 157;
-const GAUGE_COLORS = {
-  excellent: '#22c55e',
-  good:      '#84cc16',
-  fair:      '#eab308',
-  poor:      '#f97316',
-  verypoor:  '#ef4444',
-  unknown:   '#6b7280',
-};
+/* ─── Signal bars ────────────────────────────────────────────────────────── */
+const BAR_COLORS = ['#6b7280', '#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
 
-function updateGauge(pct, quality) {
-  const el = document.getElementById('gaugeSig');
-  if (!el) return;
-  const filled = (pct / 100) * GAUGE_LEN;
-  el.setAttribute('stroke-dashoffset', GAUGE_LEN - filled);
-  el.style.stroke = GAUGE_COLORS[qualityClass(quality)] || GAUGE_COLORS.unknown;
+function pctToBars(pct) {
+  if (pct <= 0)  return 0;
+  if (pct <= 20) return 1;
+  if (pct <= 40) return 2;
+  if (pct <= 60) return 3;
+  if (pct <= 80) return 4;
+  return 5;
+}
+
+function updateSignalBars(pct) {
+  const bars = document.querySelectorAll('#signalBars .signal-bar');
+  if (!bars.length) return;
+  const active = pctToBars(pct);
+  const color  = BAR_COLORS[active];
+  bars.forEach((bar, i) => {
+    bar.style.background = i < active ? color : '';
+  });
 }
 
 /* ─── Refresh ring ───────────────────────────────────────────────────────── */
@@ -128,7 +130,6 @@ function updateStatus(data) {
   const pct  = sig.percent || 0;
   const qCls = qualityClass(sig.quality || '');
 
-  document.getElementById('sigPercent').textContent = pct;
   document.getElementById('sigRssi').textContent = sig.rssi !== undefined ? sig.rssi : '–';
   document.getElementById('sigDbm').textContent  = sig.dbm !== null && sig.dbm !== undefined ? `${sig.dbm} dBm` : '–';
   document.getElementById('sigBer').textContent  = sig.ber !== undefined ? sig.ber : '–';
@@ -137,7 +138,7 @@ function updateStatus(data) {
   qBadge.textContent = sig.quality || '–';
   qBadge.className   = `quality-badge quality-${qCls}`;
 
-  updateGauge(pct, sig.quality || '');
+  updateSignalBars(pct);
 
   // Push signal reading into the history chart
   if (data.last_updated) {

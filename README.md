@@ -4,7 +4,7 @@ A **Dockerised web dashboard** for the *HSDPA USB STICK SIM Modem 7.2 Mbps 3G Wi
 
 The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device, polls it every **5 seconds**, and presents:
 
-- 📶 **Signal strength** – RSSI, dBm, quality badge, animated arc gauge
+- 📶 **Signal strength** – RSSI, dBm, quality badge, 5-bar colour-coded signal indicator (0 bars red → 5 bars green)
 - 📈 **Signal history graph** – interactive Chart.js line chart (Signal % + dBm) with selectable time ranges: **10 min · 1 hour · 6 hours · 24 hours**
 - 💾 **SIM SMS Memory** – used / free / total slots, fill bar
 - 📱 **Modem Info** – manufacturer, model, IMEI, network registration status
