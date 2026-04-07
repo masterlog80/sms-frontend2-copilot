@@ -10,6 +10,7 @@ The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device
 - 📱 **Modem Info** – manufacturer, model, IMEI, network registration status
 - 📨 **SMS Inbox** – all messages on the SIM, with per-message delete
 - 📋 **Event Log** – timestamped log of every modem event
+- 📡 **Network Selection** – scan all networks visible to the SIM and manually lock to any operator (or restore automatic selection)
 - 🌙 **Dark / Light mode** toggle (preference saved in `localStorage`)
 - 🔄 **Auto-refresh** every 5 seconds with live countdown
 
@@ -36,6 +37,10 @@ reloaded automatically when the container restarts.
 
 ![Event Log – timestamped log entries with INFO, WARNING and ERROR levels and level filters](screenshots/event_log.png)
 
+#### Network Selection – Settings tab (dark)
+
+![Settings tab – Network Selection panel in dark mode showing scan results with operator list](screenshots/settings_dark.png)
+
 ### Light Mode
 
 ![USB Modem Dashboard – light mode](screenshots/dashboard_light.png)
@@ -47,6 +52,10 @@ reloaded automatically when the container restarts.
 #### Event Log (light)
 
 ![Event Log – light mode, timestamped log entries with INFO, WARNING and ERROR levels and level filters](screenshots/event_log_light.png)
+
+#### Network Selection – Settings tab (light)
+
+![Settings tab – Network Selection panel in light mode](screenshots/settings_light.png)
 
 ---
 
@@ -165,6 +174,8 @@ The Flask backend exposes the following endpoints (consumed by the UI):
 | `DELETE` | `/api/logs` | Clear event log |
 | `GET` | `/api/signal_history` | Signal strength history (optional `?since=<ISO>` parameter) |
 | `POST` | `/api/refresh` | Trigger an immediate modem poll |
+| `GET` | `/api/networks` | Scan for available networks (AT+COPS=?, may take up to 60 s) |
+| `POST` | `/api/networks/select` | Select an operator: `{"mode":"auto"}` or `{"mode":"manual","numeric":"<MCC+MNC>"}` |
 
 ---
 
