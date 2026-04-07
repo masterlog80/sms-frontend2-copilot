@@ -544,6 +544,18 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 .lf-btn:hover { border-color: var(--accent); color: var(--text); }
 .lf-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* ─── Signal history chart ──────────────────────────────────────────────── */
+.signal-chart-wrap {
+  padding: 1.25rem 1rem 1rem;
+}
+
+#signalChart {
+  display: block;
+  width: 100%;
+  height: 260px;
+  border-radius: var(--radius-sm);
+}
+
 /* ─── Empty state ───────────────────────────────────────────────────────── */
 .empty-state {
   display: flex;

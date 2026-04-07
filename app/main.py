@@ -72,6 +72,9 @@ state = {
 }
 sms_list: list = []
 event_log: list = []
+# Rolling 30-minute signal history (in-memory only; up to 360 samples at 5 s)
+signal_history: list[dict] = []
+SIGNAL_HISTORY_SECONDS = 1800  # 30 minutes
 
 # ---------------------------------------------------------------------------
 # Data persistence helpers
@@ -215,11 +218,29 @@ def _do_poll():
         _append_log("INFO", f"Received {added} new SMS message(s)")
         _save_sms()
 
+    now = datetime.now(timezone.utc)
+    cutoff_ts = now.timestamp() - SIGNAL_HISTORY_SECONDS
+    history_entry = {
+        "timestamp": now.isoformat().replace("+00:00", "Z"),
+        "percent": signal.get("percent", 0),
+        "dbm": signal.get("dbm"),
+        "quality": signal.get("quality", "Unknown"),
+    }
+
     with _state_lock:
         state["signal"] = signal
         state["memory"] = memory
         state["modem_connected"] = modem.connected
-        state["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        state["last_updated"] = now.isoformat().replace("+00:00", "Z")
+        signal_history.append(history_entry)
+        # Discard entries older than 30 minutes
+        cutoff_iso = cutoff_ts
+        signal_history[:] = [
+            e for e in signal_history
+            if datetime.fromisoformat(
+                e["timestamp"].replace("Z", "+00:00")
+            ).timestamp() >= cutoff_iso
+        ]
 
     logger.debug("Poll OK — signal=%s memory=%s sms_on_sim=%d", signal, memory, len(new_sms))
 
@@ -309,6 +330,12 @@ def api_clear_logs():
         event_log = []
     _save_logs()
     return jsonify({"success": True})
+
+
+@app.route("/api/signal/history")
+def api_signal_history():
+    with _state_lock:
+        return jsonify({"history": list(signal_history)})
 
 
 @app.route("/api/refresh", methods=["POST"])

@@ -265,6 +265,207 @@ async function clearLog() {
   } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
 }
 
+/* ─── Signal history chart ───────────────────────────────────────────────── */
+const QUALITY_COLORS = {
+  excellent: '#22c55e',
+  good:      '#84cc16',
+  fair:      '#eab308',
+  poor:      '#f97316',
+  verypoor:  '#ef4444',
+  unknown:   '#6b7280',
+};
+
+function renderSignalChart(history) {
+  const canvas = document.getElementById('signalChart');
+  if (!canvas) return;
+
+  // Size the canvas to its CSS layout size
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width  || canvas.offsetWidth  || 600;
+  const H = rect.height || canvas.offsetHeight || 260;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Detect theme
+  const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+  const colorText    = isDark ? '#e2e8f0'  : '#0f172a';
+  const colorMuted   = isDark ? '#64748b'  : '#94a3b8';
+  const colorGrid    = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
+  const colorAreaTop = isDark ? 'rgba(99,102,241,0.25)'  : 'rgba(99,102,241,0.15)';
+  const colorAreaBot = isDark ? 'rgba(99,102,241,0)'     : 'rgba(99,102,241,0)';
+  const colorLine    = '#6366f1';
+
+  // Layout
+  const PAD_L = 46, PAD_R = 16, PAD_T = 16, PAD_B = 36;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // ── No data state ──
+  if (!history || history.length === 0) {
+    ctx.fillStyle = colorMuted;
+    ctx.font = '0.85rem sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No signal history yet – data appears after the first poll.', W / 2, H / 2);
+    const meta = document.getElementById('sigHistoryMeta');
+    if (meta) meta.textContent = '';
+    return;
+  }
+
+  // Time window: last 30 min relative to newest point
+  const now = new Date(history[history.length - 1].timestamp).getTime();
+  const windowMs = 30 * 60 * 1000;
+  const tMin = now - windowMs;
+
+  // Helpers to map data -> canvas coords
+  const toX = t  => PAD_L + ((t - tMin) / windowMs) * plotW;
+  const toY = pct => PAD_T + plotH - (Math.max(0, Math.min(100, pct)) / 100) * plotH;
+
+  // ── Grid & Y-axis labels ──
+  ctx.save();
+  ctx.strokeStyle = colorGrid;
+  ctx.lineWidth   = 1;
+  ctx.fillStyle   = colorMuted;
+  ctx.font        = `11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.textAlign   = 'right';
+  ctx.textBaseline = 'middle';
+  [0, 25, 50, 75, 100].forEach(pct => {
+    const y = toY(pct);
+    ctx.beginPath();
+    ctx.moveTo(PAD_L, y);
+    ctx.lineTo(PAD_L + plotW, y);
+    ctx.stroke();
+    ctx.fillText(pct + '%', PAD_L - 6, y);
+  });
+  ctx.restore();
+
+  // ── X-axis time labels (every 5 min) ──
+  ctx.save();
+  ctx.fillStyle    = colorMuted;
+  ctx.font         = `11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  for (let minAgo = 30; minAgo >= 0; minAgo -= 5) {
+    const t = now - minAgo * 60 * 1000;
+    const x = toX(t);
+    if (x < PAD_L - 2 || x > PAD_L + plotW + 2) continue;
+    const label = minAgo === 0 ? 'now' : `-${minAgo}m`;
+    ctx.fillText(label, x, PAD_T + plotH + 6);
+  }
+  ctx.restore();
+
+  // ── Area fill (gradient) ──
+  const grad = ctx.createLinearGradient(0, PAD_T, 0, PAD_T + plotH);
+  grad.addColorStop(0, colorAreaTop);
+  grad.addColorStop(1, colorAreaBot);
+
+  ctx.save();
+  ctx.beginPath();
+  history.forEach((pt, i) => {
+    const x = toX(new Date(pt.timestamp).getTime());
+    const y = toY(pt.percent);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  // Close area down to baseline
+  ctx.lineTo(toX(new Date(history[history.length - 1].timestamp).getTime()), PAD_T + plotH);
+  ctx.lineTo(toX(new Date(history[0].timestamp).getTime()), PAD_T + plotH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Line (coloured segments by quality) ──
+  ctx.save();
+  ctx.lineWidth   = 2.5;
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
+  for (let i = 1; i < history.length; i++) {
+    const prev = history[i - 1];
+    const curr = history[i];
+    const qc   = qualityClass(curr.quality || '');
+    ctx.strokeStyle = QUALITY_COLORS[qc] || colorLine;
+    ctx.beginPath();
+    ctx.moveTo(toX(new Date(prev.timestamp).getTime()), toY(prev.percent));
+    ctx.lineTo(toX(new Date(curr.timestamp).getTime()), toY(curr.percent));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── Dots at each sample ──
+  ctx.save();
+  history.forEach(pt => {
+    const qc = qualityClass(pt.quality || '');
+    ctx.fillStyle = QUALITY_COLORS[qc] || colorLine;
+    ctx.beginPath();
+    ctx.arc(
+      toX(new Date(pt.timestamp).getTime()),
+      toY(pt.percent),
+      history.length > 60 ? 1.5 : 3,
+      0, Math.PI * 2
+    );
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // ── Latest value label ──
+  const latest = history[history.length - 1];
+  const lx = toX(new Date(latest.timestamp).getTime());
+  const ly = toY(latest.percent);
+  const qc = qualityClass(latest.quality || '');
+  ctx.save();
+  ctx.fillStyle = QUALITY_COLORS[qc] || colorLine;
+  ctx.font      = `bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  ctx.textAlign = lx > PAD_L + plotW - 50 ? 'right' : 'left';
+  ctx.textBaseline = ly < PAD_T + 20 ? 'top' : 'bottom';
+  const labelOffset = 8;
+  ctx.fillText(
+    `${latest.percent}%`,
+    lx + (ctx.textAlign === 'right' ? -labelOffset : labelOffset),
+    ly + (ctx.textBaseline === 'top' ? labelOffset : -labelOffset)
+  );
+  ctx.restore();
+
+  // ── Meta line ──
+  const meta = document.getElementById('sigHistoryMeta');
+  if (meta) {
+    meta.textContent = `${history.length} sample${history.length !== 1 ? 's' : ''}`;
+  }
+}
+
+async function fetchSignalHistory() {
+  try {
+    const r = await fetch(`${API}/api/signal/history`);
+    if (!r.ok) throw new Error(r.statusText);
+    const { history } = await r.json();
+    renderSignalChart(history || []);
+  } catch (err) { console.warn('fetchSignalHistory error:', err); }
+}
+
+// Re-draw chart on theme change
+btnTheme.addEventListener('click', () => {
+  fetchSignalHistory();
+});
+
+// Re-draw chart whenever the Signal Strength tab becomes visible
+document.addEventListener('DOMContentLoaded', () => {
+  const signalTabBtn = document.getElementById('tab-signal');
+  if (signalTabBtn) {
+    signalTabBtn.addEventListener('shown.bs.tab', fetchSignalHistory);
+  }
+});
+
+// Redraw on window resize (canvas needs explicit resizing)
+window.addEventListener('resize', () => {
+  const pane = document.getElementById('pane-signal');
+  if (pane && pane.classList.contains('show')) {
+    fetchSignalHistory();
+  }
+});
+
 /* ─── Data fetching ──────────────────────────────────────────────────────── */
 async function fetchStatus() {
   try {
@@ -293,7 +494,7 @@ async function fetchLogs() {
 }
 
 async function refreshAll() {
-  await Promise.all([fetchStatus(), fetchSms(), fetchLogs()]);
+  await Promise.all([fetchStatus(), fetchSms(), fetchLogs(), fetchSignalHistory()]);
 }
 
 /* ─── Countdown & auto-refresh ───────────────────────────────────────────── */

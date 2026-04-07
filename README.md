@@ -4,7 +4,8 @@ A **Dockerised web dashboard** for the *HSDPA USB STICK SIM Modem 7.2 Mbps 3G Wi
 
 The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device, polls it every **5 seconds**, and presents:
 
-- 📶 **Signal strength** – RSSI, dBm, quality badge, animated bar
+- 📶 **Signal strength** – RSSI, dBm, quality badge, animated arc gauge
+- 📈 **Signal history graph** – rolling 30-minute line chart, colour-coded by quality
 - 💾 **SIM SMS Memory** – used / free / total slots, fill bar
 - 📱 **Modem Info** – manufacturer, model, IMEI, network registration status
 - 📨 **SMS Inbox** – all messages on the SIM, with per-message delete
@@ -23,6 +24,10 @@ reloaded automatically when the container restarts.
 
 ![USB Modem Dashboard – dark mode](screenshots/dashboard_dark.png)
 
+#### Signal Strength History (dark)
+
+![Signal Strength – 30-minute history graph with colour-coded quality line](screenshots/signal_strength_dark.png)
+
 #### Event Log (dark)
 
 ![Event Log – timestamped log entries with INFO, WARNING and ERROR levels and level filters](screenshots/event_log.png)
@@ -30,6 +35,10 @@ reloaded automatically when the container restarts.
 ### Light Mode
 
 ![USB Modem Dashboard – light mode](screenshots/dashboard_light.png)
+
+#### Signal Strength History (light)
+
+![Signal Strength – 30-minute history graph, light mode](screenshots/signal_strength_light.png)
 
 #### Event Log (light)
 
@@ -145,6 +154,7 @@ The Flask backend exposes the following endpoints (consumed by the UI):
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/status` | Signal, memory, modem info, connection state |
+| `GET` | `/api/signal/history` | Rolling 30-minute signal history (percent, dBm, quality) |
 | `GET` | `/api/sms` | All persisted SMS messages |
 | `DELETE` | `/api/sms/<n>` | Delete SMS at list position `n` |
 | `DELETE` | `/api/sms` | Delete **all** SMS messages |
