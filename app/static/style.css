@@ -458,40 +458,6 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 }
 .btn-danger-ghost:hover { background: rgba(239,68,68,.1); border-color: var(--red); }
 
-/* ─── Overview tab layout ───────────────────────────────────────────────── */
-.overview-grid {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 1rem;
-}
-@media (max-width: 900px) {
-  .overview-grid { grid-template-columns: 1fr; }
-}
-
-/* Sparkline */
-.sparkline-wrap {
-  padding: 0.75rem 1rem 0.5rem;
-  position: relative;
-}
-#sparkCanvas { width: 100% !important; display: block; }
-
-/* Overview SMS list (top 3 preview) */
-.ov-sms-list { padding: 0; }
-.ov-sms-preview {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  padding: 0.7rem 1rem;
-  border-bottom: 1px solid var(--border);
-  transition: background var(--transition);
-  cursor: default;
-}
-.ov-sms-preview:last-child { border-bottom: none; }
-.ov-sms-preview:hover { background: var(--surface-hover); }
-
-/* Overview log list (last 8 entries) */
-.ov-log-list { padding: 0; overflow-y: auto; max-height: 360px; }
-
 /* ─── SMS tab ───────────────────────────────────────────────────────────── */
 .sms-container { overflow-y: auto; max-height: calc(100vh - 360px); min-height: 200px; }
 

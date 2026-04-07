@@ -5,14 +5,9 @@
 
 const API = '';
 const REFRESH_INTERVAL = 5;   // seconds
-const SPARK_MAX = 20;          // sparkline history length
-const OV_SMS_MAX = 3;          // overview tab SMS preview count
-const OV_LOG_MAX = 8;          // overview tab log preview count
-
 let countdown = REFRESH_INTERVAL;
 let _smsList  = [];
 let _logList  = [];
-let _sparkHistory = [];        // [{pct, ts}]
 let _logFilter = 'ALL';
 
 /* ─── Theme ──────────────────────────────────────────────────────────────── */
@@ -26,7 +21,6 @@ function applyTheme(theme) {
     ? '<i class="bi bi-sun-fill"></i>'
     : '<i class="bi bi-moon-stars-fill"></i>';
   localStorage.setItem(THEME_KEY, theme);
-  drawSparkline();   // redraw with updated colours
 }
 
 btnTheme.addEventListener('click', () => {
@@ -106,70 +100,6 @@ function updateRing(secondsLeft) {
   document.getElementById('countdown').textContent = secondsLeft;
 }
 
-/* ─── Sparkline (canvas) ─────────────────────────────────────────────────── */
-function drawSparkline() {
-  const canvas = document.getElementById('sparkCanvas');
-  if (!canvas) return;
-  const isDark = html.getAttribute('data-bs-theme') === 'dark';
-  const W = canvas.offsetWidth || 400;
-  const H = 60;
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-
-  if (_sparkHistory.length < 2) {
-    ctx.fillStyle = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Collecting data…', W / 2, H / 2 + 4);
-    return;
-  }
-
-  const pts = _sparkHistory;
-  const xStep = W / (pts.length - 1);
-
-  // Gradient fill under line
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, 'rgba(99,102,241,.35)');
-  grad.addColorStop(1, 'rgba(99,102,241,0)');
-
-  ctx.beginPath();
-  pts.forEach((p, i) => {
-    const x = i * xStep;
-    const y = H - (p.pct / 100) * (H - 8) - 4;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  // close shape for fill
-  ctx.lineTo((pts.length - 1) * xStep, H);
-  ctx.lineTo(0, H);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // Line
-  ctx.beginPath();
-  pts.forEach((p, i) => {
-    const x = i * xStep;
-    const y = H - (p.pct / 100) * (H - 8) - 4;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
-  ctx.strokeStyle = '#6366f1';
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-
-  // Dots
-  pts.forEach((p, i) => {
-    const x = i * xStep;
-    const y = H - (p.pct / 100) * (H - 8) - 4;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#818cf8';
-    ctx.fill();
-  });
-}
-
 /* ─── Status / Signal / Memory ──────────────────────────────────────────── */
 function updateStatus(data) {
   // Connection badge
@@ -201,11 +131,6 @@ function updateStatus(data) {
 
   updateGauge(pct, sig.quality || '');
 
-  // Sparkline history
-  _sparkHistory.push({ pct, ts: data.last_updated });
-  if (_sparkHistory.length > SPARK_MAX) _sparkHistory.shift();
-  drawSparkline();
-
   // Memory
   const mem    = data.memory || {};
   const memPct = mem.percent_used || 0;
@@ -229,24 +154,12 @@ function updateStatus(data) {
 }
 
 /* ─── SMS rendering ──────────────────────────────────────────────────────── */
-function smsItemHtml(msg, idx, compact = false) {
+function smsItemHtml(msg, idx) {
   const isUnread = (msg.status || '').toUpperCase().includes('UNREAD');
   const sender   = msg.sender || 'Unknown';
   const initial  = sender.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || '?';
   const ts       = fmtDateTime(msg.timestamp);
   const newBadge = isUnread ? '<span class="new-badge">NEW</span>' : '';
-
-  if (compact) {
-    return `
-      <div class="ov-sms-preview">
-        <div class="sms-avatar" style="width:34px;height:34px;font-size:.85rem">${initial}</div>
-        <div class="sms-meta">
-          <div class="sms-sender">${escHtml(sender)}${newBadge}</div>
-          <div class="sms-time">${escHtml(ts)}</div>
-          <div class="sms-body">${escHtml((msg.message || '').slice(0, 80))}${msg.message && msg.message.length > 80 ? '…' : ''}</div>
-        </div>
-      </div>`;
-  }
 
   return `
     <div class="sms-item ${isUnread ? 'unread' : 'read'}">
@@ -287,27 +200,6 @@ function renderSms(smsList) {
       });
     });
   }
-
-  // ── Overview preview ──
-  renderOvSms(smsList);
-}
-
-function renderOvSms(smsList) {
-  const el    = document.getElementById('ovSmsList');
-  const empty = document.getElementById('ovSmsEmpty');
-  if (!smsList.length) {
-    el.innerHTML = '';
-    el.appendChild(empty || createEmpty('bi-inbox', 'No messages yet'));
-    return;
-  }
-  el.innerHTML = smsList.slice(0, OV_SMS_MAX).map((m, i) => smsItemHtml(m, i, true)).join('');
-}
-
-function createEmpty(icon, text) {
-  const d = document.createElement('div');
-  d.className = 'empty-state';
-  d.innerHTML = `<i class="bi ${icon}"></i><p>${text}</p>`;
-  return d;
 }
 
 async function deleteSms(idx) {
@@ -363,18 +255,6 @@ function renderLog(logs) {
     container.innerHTML = [...logs].reverse().map(logEntryHtml).join('');
     applyLogFilter();
   }
-
-  // ── Overview preview ──
-  renderOvLog(logs);
-}
-
-function renderOvLog(logs) {
-  const el = document.getElementById('ovLogList');
-  if (!logs.length) {
-    el.innerHTML = '<div class="empty-state"><i class="bi bi-terminal"></i><p>No events yet</p></div>';
-    return;
-  }
-  el.innerHTML = [...logs].reverse().slice(0, OV_LOG_MAX).map(logEntryHtml).join('');
 }
 
 async function clearLog() {
@@ -443,14 +323,6 @@ document.getElementById('btnRefresh').addEventListener('click', async () => {
 document.getElementById('btnClearSms').addEventListener('click', clearAllSms);
 document.getElementById('btnClearLog').addEventListener('click', clearLog);
 
-// Overview "View all" shortcuts
-document.getElementById('ovBtnViewAllSms').addEventListener('click', () => {
-  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-sms')).show();
-});
-document.getElementById('ovBtnViewAllLog').addEventListener('click', () => {
-  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-log')).show();
-});
-
 // Log filter buttons
 document.getElementById('logFilters').addEventListener('click', e => {
   const btn = e.target.closest('.lf-btn');
@@ -460,9 +332,6 @@ document.getElementById('logFilters').addEventListener('click', e => {
   _logFilter = btn.dataset.level;
   applyLogFilter();
 });
-
-// Redraw sparkline on window resize
-window.addEventListener('resize', drawSparkline);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
