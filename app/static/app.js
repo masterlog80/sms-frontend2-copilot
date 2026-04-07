@@ -10,6 +10,13 @@ let _smsList  = [];
 let _logList  = [];
 let _logFilter = 'ALL';
 
+// Signal history chart – declared early to avoid temporal dead-zone when
+// applyTheme() calls updateChartTheme() at startup.
+let _signalHistory = [];
+let _signalRangeMinutes = 10;
+let _signalChart = null;
+let _signalHistoryLastTs = null;
+
 /* ─── Theme ──────────────────────────────────────────────────────────────── */
 const html    = document.documentElement;
 const btnTheme = document.getElementById('btnTheme');
@@ -21,6 +28,7 @@ function applyTheme(theme) {
     ? '<i class="bi bi-sun-fill"></i>'
     : '<i class="bi bi-moon-stars-fill"></i>';
   localStorage.setItem(THEME_KEY, theme);
+  updateChartTheme(theme);
 }
 
 btnTheme.addEventListener('click', () => {
@@ -131,6 +139,11 @@ function updateStatus(data) {
 
   updateGauge(pct, sig.quality || '');
 
+  // Push signal reading into the history chart
+  if (data.last_updated) {
+    pushSignalPoint(sig, data.last_updated);
+  }
+
   // Memory
   const mem    = data.memory || {};
   const memPct = mem.percent_used || 0;
@@ -152,6 +165,177 @@ function updateStatus(data) {
   document.getElementById('infoImei').textContent  = info.imei          || '–';
   document.getElementById('infoNet').textContent   = info.network_status || '–';
 }
+
+/* ─── Signal History Chart ───────────────────────────────────────────────── */
+const CHART_COLORS = {
+  line:        '#6366f1',
+  fill:        'rgba(99,102,241,0.15)',
+  grid_dark:   'rgba(255,255,255,0.06)',
+  grid_light:  'rgba(0,0,0,0.06)',
+  tick_dark:   '#64748b',
+  tick_light:  '#94a3b8',
+};
+
+function _chartGridColor() {
+  return html.getAttribute('data-bs-theme') === 'dark'
+    ? CHART_COLORS.grid_dark : CHART_COLORS.grid_light;
+}
+function _chartTickColor() {
+  return html.getAttribute('data-bs-theme') === 'dark'
+    ? CHART_COLORS.tick_dark : CHART_COLORS.tick_light;
+}
+
+function initSignalChart() {
+  const ctx = document.getElementById('signalChart');
+  if (!ctx) return;
+  const gc = _chartGridColor();
+  const tc = _chartTickColor();
+  _signalChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Signal %',
+          data: [],
+          borderColor: CHART_COLORS.line,
+          backgroundColor: CHART_COLORS.fill,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+          yAxisID: 'yPct',
+        },
+        {
+          label: 'dBm',
+          data: [],
+          borderColor: '#22c55e',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 1.5,
+          borderDash: [4, 3],
+          yAxisID: 'yDbm',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { tooltipFormat: 'HH:mm:ss', displayFormats: { second: 'HH:mm:ss', minute: 'HH:mm', hour: 'HH:mm' } },
+          grid: { color: gc },
+          ticks: { color: tc, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+        },
+        yPct: {
+          type: 'linear',
+          position: 'left',
+          min: 0,
+          max: 100,
+          grid: { color: gc },
+          ticks: { color: tc, callback: v => v + '%' },
+          title: { display: true, text: 'Signal %', color: tc },
+        },
+        yDbm: {
+          type: 'linear',
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: { color: '#22c55e', callback: v => v + ' dBm' },
+          title: { display: true, text: 'dBm', color: '#22c55e' },
+        },
+      },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: tc, boxWidth: 12, padding: 14 },
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.yAxisID === 'yPct') {
+                const q = ctx.raw.quality || '';
+                return ` Signal: ${ctx.parsed.y}%${q ? '  (' + q + ')' : ''}`;
+              }
+              return ctx.parsed.y !== null ? ` dBm: ${ctx.parsed.y}` : null;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateChartTheme(theme) {
+  if (!_signalChart) return;  // chart may not be initialised yet
+  const gc = theme === 'dark' ? CHART_COLORS.grid_dark : CHART_COLORS.grid_light;
+  const tc = theme === 'dark' ? CHART_COLORS.tick_dark : CHART_COLORS.tick_light;
+  const s = _signalChart.options.scales;
+  s.x.grid.color        = gc;
+  s.x.ticks.color       = tc;
+  s.yPct.grid.color     = gc;
+  s.yPct.ticks.color    = tc;
+  s.yPct.title.color    = tc;
+  _signalChart.options.plugins.legend.labels.color = tc;
+  _signalChart.update('none');
+}
+
+function _buildChartData() {
+  if (!_signalChart) return;
+  const cutoff = Date.now() - _signalRangeMinutes * 60 * 1000;
+  const visible = _signalHistory.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+  _signalChart.data.datasets[0].data = visible.map(e => ({ x: e.timestamp, y: e.percent, quality: e.quality }));
+  _signalChart.data.datasets[1].data = visible
+    .filter(e => e.dbm !== null && e.dbm !== undefined)
+    .map(e => ({ x: e.timestamp, y: e.dbm }));
+  _signalChart.update();
+}
+
+function pushSignalPoint(signal, timestamp) {
+  // Avoid duplicates (same timestamp already in history from the initial bulk fetch)
+  if (_signalHistoryLastTs && timestamp <= _signalHistoryLastTs) return;
+  _signalHistory.push({
+    timestamp,
+    percent: signal.percent || 0,
+    dbm:     signal.dbm,
+    rssi:    signal.rssi,
+    quality: signal.quality,
+  });
+  _signalHistoryLastTs = timestamp;
+  // Prune to 24 h in memory
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  while (_signalHistory.length > 0 && new Date(_signalHistory[0].timestamp).getTime() < cutoff) {
+    _signalHistory.shift();
+  }
+  _buildChartData();
+}
+
+async function fetchSignalHistory() {
+  try {
+    const r = await fetch(`${API}/api/signal_history`);
+    if (!r.ok) throw new Error(r.statusText);
+    const { history } = await r.json();
+    _signalHistory = history || [];
+    if (_signalHistory.length > 0) {
+      _signalHistoryLastTs = _signalHistory[_signalHistory.length - 1].timestamp;
+    }
+    _buildChartData();
+  } catch (err) { console.warn('fetchSignalHistory error:', err); }
+}
+
+// Time-range selector
+document.getElementById('signalRanges').addEventListener('click', e => {
+  const btn = e.target.closest('.lf-btn');
+  if (!btn) return;
+  document.querySelectorAll('#signalRanges .lf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _signalRangeMinutes = parseInt(btn.dataset.minutes, 10);
+  _buildChartData();
+});
 
 /* ─── SMS rendering ──────────────────────────────────────────────────────── */
 function smsItemHtml(msg, idx) {
@@ -335,7 +519,8 @@ document.getElementById('logFilters').addEventListener('click', e => {
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  initSignalChart();
   updateRing(REFRESH_INTERVAL);
-  refreshAll();
+  fetchSignalHistory().then(() => refreshAll());
   setInterval(tickCountdown, 1000);
 });
