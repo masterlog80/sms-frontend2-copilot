@@ -333,9 +333,6 @@ document.getElementById('logFilters').addEventListener('click', e => {
   applyLogFilter();
 });
 
-// Redraw sparkline on window resize
-window.addEventListener('resize', drawSparkline);
-
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   updateRing(REFRESH_INTERVAL);
