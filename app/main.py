@@ -41,8 +41,11 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 SMS_FILE = os.path.join(DATA_DIR, "sms.json")
 LOGS_FILE = os.path.join(DATA_DIR, "logs.json")
 STATUS_FILE = os.path.join(DATA_DIR, "status.json")
+SIGNAL_HISTORY_FILE = os.path.join(DATA_DIR, "signal_history.json")
 
 MAX_LOG_ENTRIES = 500
+# 24 h at 5 s intervals = 17 280 readings
+MAX_SIGNAL_HISTORY = 17280
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -72,6 +75,7 @@ state = {
 }
 sms_list: list = []
 event_log: list = []
+signal_history: list = []
 
 # ---------------------------------------------------------------------------
 # Data persistence helpers
@@ -82,7 +86,7 @@ def _ensure_data_dir():
 
 
 def _load_persisted():
-    global sms_list, event_log
+    global sms_list, event_log, signal_history
     _ensure_data_dir()
     try:
         if os.path.exists(SMS_FILE) and os.path.getsize(SMS_FILE) > 0:
@@ -102,6 +106,15 @@ def _load_persisted():
         logger.warning("Could not load logs file: %s", exc)
         event_log = []
 
+    try:
+        if os.path.exists(SIGNAL_HISTORY_FILE) and os.path.getsize(SIGNAL_HISTORY_FILE) > 0:
+            with open(SIGNAL_HISTORY_FILE) as f:
+                signal_history = json.load(f)
+            logger.info("Loaded %d signal history entries from disk", len(signal_history))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load signal history file: %s", exc)
+        signal_history = []
+
 
 def _save_sms():
     _ensure_data_dir()
@@ -119,6 +132,15 @@ def _save_logs():
             json.dump(event_log[-MAX_LOG_ENTRIES:], f, indent=2)
     except Exception as exc:  # noqa: BLE001
         logger.error("Could not save logs: %s", exc)
+
+
+def _save_signal_history():
+    _ensure_data_dir()
+    try:
+        with open(SIGNAL_HISTORY_FILE, "w") as f:
+            json.dump(signal_history[-MAX_SIGNAL_HISTORY:], f)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not save signal history: %s", exc)
 
 
 def _append_log(level: str, message: str):
@@ -221,7 +243,25 @@ def _do_poll():
         state["modem_connected"] = modem.connected
         state["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
+    _record_signal(signal, state["last_updated"])
+
     logger.debug("Poll OK — signal=%s memory=%s sms_on_sim=%d", signal, memory, len(new_sms))
+
+
+def _record_signal(signal: dict, timestamp: str):
+    """Append one reading to the in-memory signal history and persist it."""
+    entry = {
+        "timestamp": timestamp,
+        "percent": signal.get("percent", 0),
+        "dbm": signal.get("dbm"),
+        "rssi": signal.get("rssi"),
+        "quality": signal.get("quality"),
+    }
+    with _state_lock:
+        signal_history.append(entry)
+        if len(signal_history) > MAX_SIGNAL_HISTORY:
+            signal_history.pop(0)
+    _save_signal_history()
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +361,23 @@ def api_refresh():
     except Exception:  # noqa: BLE001
         logger.exception("Error during manual refresh")
         return jsonify({"success": False, "error": "Refresh failed; check server logs"}), 500
+
+
+@app.route("/api/signal_history")
+def api_signal_history():
+    """Return persisted signal-strength readings.
+
+    Optional query parameter ``since`` (ISO-8601 timestamp): when supplied
+    only readings at or after that timestamp are returned, allowing the
+    frontend to fetch just the new delta on every refresh cycle.
+    """
+    since = request.args.get("since")
+    with _state_lock:
+        if since:
+            entries = [e for e in signal_history if e["timestamp"] >= since]
+        else:
+            entries = list(signal_history)
+    return jsonify({"history": entries})
 
 
 # ---------------------------------------------------------------------------

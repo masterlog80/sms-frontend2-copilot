@@ -4,7 +4,8 @@ A **Dockerised web dashboard** for the *HSDPA USB STICK SIM Modem 7.2 Mbps 3G Wi
 
 The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device, polls it every **5 seconds**, and presents:
 
-- 📶 **Signal strength** – RSSI, dBm, quality badge, animated bar
+- 📶 **Signal strength** – RSSI, dBm, quality badge, animated arc gauge
+- 📈 **Signal history graph** – interactive Chart.js line chart (Signal % + dBm) with selectable time ranges: **10 min · 1 hour · 6 hours · 24 hours**
 - 💾 **SIM SMS Memory** – used / free / total slots, fill bar
 - 📱 **Modem Info** – manufacturer, model, IMEI, network registration status
 - 📨 **SMS Inbox** – all messages on the SIM, with per-message delete
@@ -21,7 +22,15 @@ reloaded automatically when the container restarts.
 
 ### Dark Mode
 
-![USB Modem Dashboard – dark mode](screenshots/dashboard_dark.png)
+![USB Modem Dashboard – dark mode, SMS Inbox tab](screenshots/dashboard_dark.png)
+
+#### Signal Strength History (dark) – 10 min view
+
+![Signal Strength History chart – dark mode, 10 min range, Signal % area and dBm line](screenshots/signal_chart_dark.png)
+
+#### Signal Strength History (dark) – 1 hour view
+
+![Signal Strength History chart – dark mode, 1 hour range](screenshots/signal_chart_1h.png)
 
 #### Event Log (dark)
 
@@ -30,6 +39,10 @@ reloaded automatically when the container restarts.
 ### Light Mode
 
 ![USB Modem Dashboard – light mode](screenshots/dashboard_light.png)
+
+#### Signal Strength History (light)
+
+![Signal Strength History chart – light mode](screenshots/signal_chart_light.png)
 
 #### Event Log (light)
 
@@ -150,6 +163,7 @@ The Flask backend exposes the following endpoints (consumed by the UI):
 | `DELETE` | `/api/sms` | Delete **all** SMS messages |
 | `GET` | `/api/logs` | Event log entries |
 | `DELETE` | `/api/logs` | Clear event log |
+| `GET` | `/api/signal_history` | Signal strength history (optional `?since=<ISO>` parameter) |
 | `POST` | `/api/refresh` | Trigger an immediate modem poll |
 
 ---
@@ -162,6 +176,7 @@ Two JSON files are written to the volume:
 |---|---|
 | `/data/sms.json` | All received SMS (merged, never overwritten unless you delete) |
 | `/data/logs.json` | Up to 500 most-recent event log entries |
+| `/data/signal_history.json` | Up to 17 280 signal readings (~24 h at 5 s intervals) |
 
 To back up or inspect the data on the host:
 
