@@ -380,6 +380,40 @@ def api_signal_history():
     return jsonify({"history": entries})
 
 
+@app.route("/api/networks")
+def api_networks():
+    """Scan for available networks via AT+COPS=? (may take up to 60 seconds)."""
+    if not modem.connected:
+        return jsonify({"error": "Modem not connected"}), 503
+    networks = modem.scan_networks()
+    current = modem.get_current_network()
+    _append_log("INFO", f"Network scan complete – found {len(networks)} network(s)")
+    return jsonify({"networks": networks, "current": current})
+
+
+@app.route("/api/networks/select", methods=["POST"])
+def api_select_network():
+    """Select a network operator.
+
+    Request body (JSON):
+      ``{"mode": "auto"}`` – restore automatic selection.
+      ``{"mode": "manual", "numeric": "12345"}`` – lock to a specific operator.
+    """
+    if not modem.connected:
+        return jsonify({"error": "Modem not connected"}), 503
+    data = request.get_json(force=True) or {}
+    mode = data.get("mode", "auto")
+    numeric = data.get("numeric")
+    if mode == "manual" and not numeric:
+        return jsonify({"error": "numeric is required for manual selection"}), 400
+    ok = modem.select_network(mode, numeric)
+    if ok:
+        _append_log("INFO", f"Network selected: mode={mode}" + (f" numeric={numeric}" if numeric else ""))
+        return jsonify({"success": True})
+    _append_log("WARNING", f"Network selection failed: mode={mode}" + (f" numeric={numeric}" if numeric else ""))
+    return jsonify({"success": False, "error": "Selection failed; check modem response"}), 500
+
+
 # ---------------------------------------------------------------------------
 # Application startup
 # ---------------------------------------------------------------------------

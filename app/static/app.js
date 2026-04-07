@@ -518,6 +518,150 @@ document.getElementById('logFilters').addEventListener('click', e => {
   applyLogFilter();
 });
 
+/* ─── Network selection ──────────────────────────────────────────────────── */
+let _currentNetwork = {};
+
+function networkStatusClass(status) {
+  return { current: 'net-current', available: 'net-available', forbidden: 'net-forbidden' }[status] || 'net-unknown';
+}
+
+function networkTechBadge(tech) {
+  if (!tech || tech === 'Unknown') return '';
+  return `<span class="net-tech-badge">${escHtml(tech)}</span>`;
+}
+
+function renderNetworkList(networks, current) {
+  _currentNetwork = current || {};
+
+  const info = document.getElementById('currentNetworkInfo');
+  const nameEl = document.getElementById('currentNetworkName');
+  const modeEl = document.getElementById('currentNetworkMode');
+
+  if (current && current.operator) {
+    nameEl.textContent = current.operator;
+    modeEl.textContent = current.mode === 'auto' ? 'Auto' : 'Manual';
+    modeEl.className = 'network-mode-badge ms-2' + (current.mode === 'auto' ? ' net-mode-auto' : ' net-mode-manual');
+    info.classList.remove('d-none');
+  } else {
+    info.classList.add('d-none');
+  }
+
+  const list = document.getElementById('networkList');
+  const empty = document.getElementById('networkScanEmpty');
+
+  if (!networks.length) {
+    list.classList.add('d-none');
+    list.innerHTML = '';
+    empty.innerHTML = `<i class="bi bi-broadcast display-5"></i><p>No networks found.</p>`;
+    empty.classList.remove('d-none');
+    return;
+  }
+
+  empty.classList.add('d-none');
+
+  // Build list: Auto first, then networks sorted by status (current first, then available, then others)
+  const order = { current: 0, available: 1, unknown: 2, forbidden: 3 };
+  const sorted = [...networks].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+
+  const autoSelected = _currentNetwork.mode === 'auto';
+
+  let html = `
+    <div class="network-item ${autoSelected ? 'net-selected' : ''}" data-mode="auto">
+      <div class="net-name">
+        <i class="bi bi-magic me-1 opacity-75"></i>
+        <strong>Auto</strong>
+        <span class="net-sub text-muted ms-1">– automatic selection</span>
+      </div>
+      <button class="net-select-btn ${autoSelected ? 'net-select-btn--active' : ''}"
+              data-mode="auto" ${autoSelected ? 'disabled' : ''}>
+        ${autoSelected ? '<i class="bi bi-check2"></i> Selected' : 'Select'}
+      </button>
+    </div>`;
+
+  for (const net of sorted) {
+    const isCurrent = net.status === 'current';
+    const isForbidden = net.status === 'forbidden';
+    const statusCls = networkStatusClass(net.status);
+    html += `
+      <div class="network-item ${isCurrent ? 'net-selected' : ''} ${statusCls}" data-mode="manual" data-numeric="${escHtml(net.numeric)}">
+        <div class="net-name">
+          <strong>${escHtml(net.long_name || net.short_name || net.numeric)}</strong>
+          ${net.short_name && net.short_name !== net.long_name ? `<span class="net-sub text-muted ms-1">(${escHtml(net.short_name)})</span>` : ''}
+          ${networkTechBadge(net.tech)}
+          <span class="net-status-badge ${statusCls}">${escHtml(net.status)}</span>
+        </div>
+        <button class="net-select-btn ${isCurrent ? 'net-select-btn--active' : ''}"
+                data-mode="manual" data-numeric="${escHtml(net.numeric)}"
+                ${isCurrent || isForbidden ? 'disabled' : ''}>
+          ${isCurrent ? '<i class="bi bi-check2"></i> Selected' : isForbidden ? 'Forbidden' : 'Select'}
+        </button>
+      </div>`;
+  }
+
+  list.innerHTML = html;
+  list.classList.remove('d-none');
+
+  list.querySelectorAll('.net-select-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => selectNetwork(btn.dataset.mode, btn.dataset.numeric));
+  });
+}
+
+async function scanNetworks() {
+  const btn = document.getElementById('btnScanNetworks');
+  const spinner = document.getElementById('networkScanSpinner');
+  const empty = document.getElementById('networkScanEmpty');
+  const list = document.getElementById('networkList');
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+  empty.classList.add('d-none');
+  list.classList.add('d-none');
+
+  try {
+    const r = await fetch(`${API}/api/networks`);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      showToast('Scan failed: ' + (body.error || r.statusText), 'danger');
+      empty.innerHTML = `<i class="bi bi-broadcast display-5"></i><p>Scan failed.</p>`;
+      empty.classList.remove('d-none');
+      return;
+    }
+    const { networks, current } = await r.json();
+    renderNetworkList(networks || [], current || {});
+    showToast(`Found ${(networks || []).length} network(s)`, 'success');
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+    empty.innerHTML = `<i class="bi bi-broadcast display-5"></i><p>Scan failed.</p>`;
+    empty.classList.remove('d-none');
+  } finally {
+    spinner.classList.add('d-none');
+    btn.disabled = false;
+  }
+}
+
+async function selectNetwork(mode, numeric) {
+  const body = mode === 'auto' ? { mode: 'auto' } : { mode: 'manual', numeric };
+  try {
+    const r = await fetch(`${API}/api/networks/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      showToast(mode === 'auto' ? 'Switched to automatic selection' : `Selected network ${numeric}`, 'success');
+      // Re-scan to reflect the new selection
+      await scanNetworks();
+    } else {
+      const data = await r.json().catch(() => ({}));
+      showToast('Selection failed: ' + (data.error || r.statusText), 'danger');
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'danger');
+  }
+}
+
+document.getElementById('btnScanNetworks').addEventListener('click', scanNetworks);
+
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initSignalChart();
