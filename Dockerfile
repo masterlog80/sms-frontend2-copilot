@@ -33,6 +33,7 @@ EXPOSE 5000
 
 # Environment defaults (can be overridden in docker-compose.yml)
 ENV MODEM_DEVICE=/dev/ttyUSB0 \
+    MODEM_DEVICES=/dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2,/dev/ttyUSB3,/dev/ttyUSB4 \
     POLL_INTERVAL=5 \
     DATA_DIR=/data \
     LOG_LEVEL=INFO \
