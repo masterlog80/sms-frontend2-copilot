@@ -336,8 +336,8 @@ function initMiniSignalChart() {
 
 function _updateMiniChart() {
   if (!_miniSignalChart) return;
-  const cutoff = Date.now() - 10 * 60 * 1000;
-  const visible = _signalHistory.filter(e => new Date(e.timestamp).getTime() >= cutoff);
+  const cutoffMs = Date.now() - 10 * 60 * 1000;
+  const visible = _signalHistory.filter(e => new Date(e.timestamp).getTime() >= cutoffMs);
   _miniSignalChart.data.datasets[0].data = visible.map(e => ({ x: e.timestamp, y: e.percent }));
   _miniSignalChart.update('none');
 }
