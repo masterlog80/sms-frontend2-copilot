@@ -29,7 +29,7 @@ cd sms-frontend2-copilot
 # 2. Build and start the container (first run builds the image)
 yes | docker image prune --all
 docker build -t modem-dashboard .
-docker compose up -d --build
+#docker compose up -d --build
 
 # 3. Deploy the composer file:
 docker compose -f docker-compose.yml up -d --remove-orphans
