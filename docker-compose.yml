@@ -9,16 +9,18 @@ services:
     container_name: modem-dashboard
     restart: unless-stopped
 
-    # ── Privileged mode required to access /dev/ttyUSB0 ──────────────────
+    # ── Privileged mode required to access /dev/ttyUSB* ──────────────────
     privileged: true
 
     # ── Device passthrough ────────────────────────────────────────────────
+    # All five ports are passed through so the app can fall back automatically
+    # when the primary device (/dev/ttyUSB0) is unavailable.
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
-    # Uncomment the lines below if your modem uses a different port
-    # (e.g. /dev/ttyUSB1 for data, /dev/ttyUSB2 for AT commands):
-    #   - /dev/ttyUSB1:/dev/ttyUSB1
-    #   - /dev/ttyUSB2:/dev/ttyUSB2
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/ttyUSB2:/dev/ttyUSB2
+      - /dev/ttyUSB3:/dev/ttyUSB3
+      - /dev/ttyUSB4:/dev/ttyUSB4
 
     # ── Persistent data (SMS history, event log) ──────────────────────────
     volumes:
@@ -30,7 +32,8 @@ services:
 
     # ── Configuration (override as needed) ───────────────────────────────
     environment:
-      MODEM_DEVICE: /dev/ttyUSB0   # serial device exposed inside the container
+      MODEM_DEVICE: /dev/ttyUSB0                                               # primary device (tried first)
+      MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2,/dev/ttyUSB3,/dev/ttyUSB4  # fallback order
       POLL_INTERVAL: 5             # seconds between modem polls
       DATA_DIR: /data              # persistent data directory (inside container)
       LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR

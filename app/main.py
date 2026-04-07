@@ -23,6 +23,17 @@ from modem import ModemManager
 # Configuration
 # ---------------------------------------------------------------------------
 DEVICE = os.environ.get("MODEM_DEVICE", "/dev/ttyUSB0")
+# Comma-separated list of devices to try in order.  Defaults to USB0-4 with
+# the configured MODEM_DEVICE first so that the primary device is always
+# attempted before any alternatives.
+_default_devices = [DEVICE] + [
+    f"/dev/ttyUSB{i}" for i in range(5) if f"/dev/ttyUSB{i}" != DEVICE
+]
+MODEM_DEVICES: list[str] = [
+    d.strip()
+    for d in os.environ.get("MODEM_DEVICES", ",".join(_default_devices)).split(",")
+    if d.strip()
+]
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "5"))   # seconds
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -126,7 +137,7 @@ def _append_log(level: str, message: str):
 # ---------------------------------------------------------------------------
 # Modem polling loop
 # ---------------------------------------------------------------------------
-modem = ModemManager(device=DEVICE)
+modem = ModemManager(device=MODEM_DEVICES[0])
 
 
 def _merge_sms(new_messages: list):
@@ -149,8 +160,15 @@ def _merge_sms(new_messages: list):
 
 def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
-    logger.info("Polling thread started (interval=%ds, device=%s)", POLL_INTERVAL, DEVICE)
-    _append_log("INFO", f"Polling started on {DEVICE} every {POLL_INTERVAL}s")
+    logger.info(
+        "Polling thread started (interval=%ds, devices=%s)",
+        POLL_INTERVAL,
+        MODEM_DEVICES,
+    )
+    _append_log(
+        "INFO",
+        f"Polling started – will try devices {MODEM_DEVICES} every {POLL_INTERVAL}s",
+    )
 
     while True:
         try:
@@ -164,18 +182,25 @@ def _do_poll():
     global state
 
     if not modem.connected:
-        connected = modem.connect()
-        if connected:
-            _append_log("INFO", f"Connected to modem on {DEVICE}")
-            try:
-                info = modem.get_modem_info()
-                with _state_lock:
-                    state["modem_info"] = info
-                _append_log("INFO", f"Modem info: {info}")
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not fetch modem info: %s", exc)
-        else:
-            _append_log("WARNING", f"Cannot connect to modem on {DEVICE}")
+        connected = False
+        for device in MODEM_DEVICES:
+            modem.disconnect()
+            modem.device = device
+            connected = modem.connect()
+            if connected:
+                _append_log("INFO", f"Connected to modem on {device}")
+                try:
+                    info = modem.get_modem_info()
+                    with _state_lock:
+                        state["modem_info"] = info
+                    _append_log("INFO", f"Modem info: {info}")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not fetch modem info: %s", exc)
+                break
+            else:
+                _append_log("WARNING", f"Cannot connect to modem on {device}")
+
+        if not connected:
             with _state_lock:
                 state["modem_connected"] = False
                 state["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -217,7 +242,8 @@ def api_status():
             "modem_info": state["modem_info"],
             "modem_connected": state["modem_connected"],
             "last_updated": state["last_updated"],
-            "device": DEVICE,
+            "device": modem.device,
+            "devices": MODEM_DEVICES,
             "poll_interval": POLL_INTERVAL,
         })
 
