@@ -155,11 +155,11 @@
   <!-- Tab navigation (pill style) -->
   <ul class="dash-tabs nav" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="dash-tab-btn active" id="tab-overview"
-              data-bs-toggle="tab" data-bs-target="#pane-overview"
+      <button class="dash-tab-btn active" id="tab-signal"
+              data-bs-toggle="tab" data-bs-target="#pane-signal"
               type="button" role="tab">
-        <i class="bi bi-grid-1x2"></i>
-        <span>Overview</span>
+        <i class="bi bi-activity"></i>
+        <span>Signal Strength</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -185,57 +185,18 @@
   <!-- Tab panes -->
   <div class="tab-content dash-tab-content">
 
-    <!-- ── Overview ─────────────────────────────────────────────────── -->
-    <div class="tab-pane fade show active" id="pane-overview" role="tabpanel">
-      <div class="overview-grid">
-
-        <!-- Quick-stats column -->
-        <div class="ov-col-main">
-
-          <!-- Signal history timeline (last 20 polls) -->
-          <div class="panel">
-            <div class="panel-hdr">
-              <span><i class="bi bi-activity me-2"></i>Signal History</span>
-              <span class="panel-hdr-sub">last 20 polls</span>
-            </div>
-            <div class="panel-body sparkline-wrap">
-              <canvas id="sparkCanvas" height="60"></canvas>
-            </div>
-          </div>
-
-          <!-- Recent SMS preview -->
-          <div class="panel mt-3">
-            <div class="panel-hdr">
-              <span><i class="bi bi-envelope me-2"></i>Recent Messages</span>
-              <button class="panel-link" id="ovBtnViewAllSms">View all <i class="bi bi-arrow-right"></i></button>
-            </div>
-            <div id="ovSmsList" class="ov-sms-list">
-              <div class="empty-state" id="ovSmsEmpty">
-                <i class="bi bi-inbox"></i>
-                <p>No messages yet</p>
-              </div>
-            </div>
-          </div>
+    <!-- ── Signal Strength ──────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="pane-signal" role="tabpanel">
+      <div class="panel">
+        <div class="panel-hdr">
+          <span><i class="bi bi-activity me-2"></i>Signal History</span>
+          <span class="panel-hdr-sub">last 20 polls</span>
         </div>
-
-        <!-- Recent log column -->
-        <div class="ov-col-side">
-          <div class="panel h-100">
-            <div class="panel-hdr">
-              <span><i class="bi bi-journal-text me-2"></i>Recent Events</span>
-              <button class="panel-link" id="ovBtnViewAllLog">View all <i class="bi bi-arrow-right"></i></button>
-            </div>
-            <div id="ovLogList" class="ov-log-list font-monospace small">
-              <div class="empty-state" id="ovLogEmpty">
-                <i class="bi bi-terminal"></i>
-                <p>No events yet</p>
-              </div>
-            </div>
-          </div>
+        <div class="panel-body sparkline-wrap">
+          <canvas id="sparkCanvas" height="60"></canvas>
         </div>
-
       </div>
-    </div><!-- /pane-overview -->
+    </div><!-- /pane-signal -->
 
     <!-- ── SMS Inbox ─────────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="pane-sms" role="tabpanel">

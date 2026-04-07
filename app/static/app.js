@@ -6,8 +6,6 @@
 const API = '';
 const REFRESH_INTERVAL = 5;   // seconds
 const SPARK_MAX = 20;          // sparkline history length
-const OV_SMS_MAX = 3;          // overview tab SMS preview count
-const OV_LOG_MAX = 8;          // overview tab log preview count
 
 let countdown = REFRESH_INTERVAL;
 let _smsList  = [];
@@ -287,27 +285,6 @@ function renderSms(smsList) {
       });
     });
   }
-
-  // ── Overview preview ──
-  renderOvSms(smsList);
-}
-
-function renderOvSms(smsList) {
-  const el    = document.getElementById('ovSmsList');
-  const empty = document.getElementById('ovSmsEmpty');
-  if (!smsList.length) {
-    el.innerHTML = '';
-    el.appendChild(empty || createEmpty('bi-inbox', 'No messages yet'));
-    return;
-  }
-  el.innerHTML = smsList.slice(0, OV_SMS_MAX).map((m, i) => smsItemHtml(m, i, true)).join('');
-}
-
-function createEmpty(icon, text) {
-  const d = document.createElement('div');
-  d.className = 'empty-state';
-  d.innerHTML = `<i class="bi ${icon}"></i><p>${text}</p>`;
-  return d;
 }
 
 async function deleteSms(idx) {
@@ -363,18 +340,6 @@ function renderLog(logs) {
     container.innerHTML = [...logs].reverse().map(logEntryHtml).join('');
     applyLogFilter();
   }
-
-  // ── Overview preview ──
-  renderOvLog(logs);
-}
-
-function renderOvLog(logs) {
-  const el = document.getElementById('ovLogList');
-  if (!logs.length) {
-    el.innerHTML = '<div class="empty-state"><i class="bi bi-terminal"></i><p>No events yet</p></div>';
-    return;
-  }
-  el.innerHTML = [...logs].reverse().slice(0, OV_LOG_MAX).map(logEntryHtml).join('');
 }
 
 async function clearLog() {
@@ -442,14 +407,6 @@ document.getElementById('btnRefresh').addEventListener('click', async () => {
 
 document.getElementById('btnClearSms').addEventListener('click', clearAllSms);
 document.getElementById('btnClearLog').addEventListener('click', clearLog);
-
-// Overview "View all" shortcuts
-document.getElementById('ovBtnViewAllSms').addEventListener('click', () => {
-  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-sms')).show();
-});
-document.getElementById('ovBtnViewAllLog').addEventListener('click', () => {
-  bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-log')).show();
-});
 
 // Log filter buttons
 document.getElementById('logFilters').addEventListener('click', e => {
