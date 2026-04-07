@@ -564,3 +564,113 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(128,128,128,.3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.5); }
+
+/* ─── Network selection ─────────────────────────────────────────────────── */
+.current-network-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.text-accent { color: var(--accent-light); }
+
+.network-mode-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.net-mode-auto   { background: rgba(99,102,241,.15); border-color: rgba(99,102,241,.4); color: var(--accent-light); }
+.net-mode-manual { background: rgba(234,179,8,.15);  border-color: rgba(234,179,8,.4);  color: var(--yellow); }
+
+.network-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.network-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  transition: background var(--transition), border-color var(--transition);
+}
+.network-item:hover { background: var(--surface-hover); }
+.network-item.net-selected {
+  border-color: var(--accent);
+  background: rgba(99,102,241,.08);
+}
+.network-item.net-forbidden { opacity: 0.55; }
+
+.net-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+}
+.net-sub { font-size: 0.78rem; }
+
+.net-tech-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(96,165,250,.15);
+  border: 1px solid rgba(96,165,250,.35);
+  color: var(--blue);
+}
+
+.net-status-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  text-transform: capitalize;
+}
+.net-current   .net-status-badge { background: rgba(34,197,94,.15);  border-color: rgba(34,197,94,.4);  color: var(--green);  }
+.net-available .net-status-badge { background: rgba(99,102,241,.12); border-color: rgba(99,102,241,.3); color: var(--accent-light); }
+.net-forbidden .net-status-badge { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.3);  color: var(--red);    }
+.net-unknown   .net-status-badge { background: rgba(107,114,128,.12);border-color: rgba(107,114,128,.3);color: var(--gray);   }
+
+.net-select-btn {
+  flex-shrink: 0;
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent-light);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.net-select-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.net-select-btn--active {
+  background: rgba(34,197,94,.15);
+  border-color: rgba(34,197,94,.4);
+  color: var(--green);
+  cursor: default;
+}
+.net-select-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

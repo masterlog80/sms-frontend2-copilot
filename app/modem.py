@@ -230,9 +230,96 @@ class ModemManager:
                 logger.warning("get_modem_info partial error: %s", exc)
             return info
 
+    def get_current_network(self) -> dict:
+        """
+        Query AT+COPS? and return the currently selected operator.
+        Returns dict with keys: mode, format, operator, tech.
+        """
+        with self._lock:
+            try:
+                resp = self._cmd("AT+COPS?")
+                return self._parse_current_network(resp)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("get_current_network error: %s", exc)
+                return {}
+
+    def scan_networks(self) -> list:
+        """
+        Scan for available networks using AT+COPS=?.
+        Returns a list of dicts with keys: status, long_name, short_name, numeric, tech.
+        WARNING: This command can take up to 60 seconds to complete.
+        """
+        with self._lock:
+            try:
+                resp = self._cmd("AT+COPS=?", delay=60)
+                return self._parse_network_list(resp)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("scan_networks error: %s", exc)
+                return []
+
+    def select_network(self, mode: str, numeric: str = None) -> bool:
+        """
+        Select a network operator.
+        mode: 'auto' sets automatic selection (AT+COPS=0).
+        mode: 'manual' selects the network identified by *numeric* (AT+COPS=1,2,"<numeric>").
+        Returns True on success.
+        """
+        with self._lock:
+            try:
+                if mode == "auto":
+                    resp = self._cmd("AT+COPS=0", delay=10)
+                else:
+                    resp = self._cmd(f'AT+COPS=1,2,"{numeric}"', delay=10)
+                return "OK" in resp
+            except Exception as exc:  # noqa: BLE001
+                logger.error("select_network error: %s", exc)
+                return False
+
     # ------------------------------------------------------------------
     # Parsers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_current_network(raw: str) -> dict:
+        """Parse AT+COPS? response into a dict."""
+        mode_map = {"0": "auto", "1": "manual", "2": "deregister", "4": "manual_auto"}
+        tech_map = {
+            "0": "GSM", "1": "GSM Compact", "2": "UTRAN (3G)",
+            "3": "GSM/EGPRS", "4": "UTRAN/HSDPA", "5": "UTRAN/HSUPA",
+            "6": "UTRAN/HSPA", "7": "LTE",
+        }
+        m = re.search(r"\+COPS:\s*(\d+)(?:,(\d+),\"([^\"]*?)\"(?:,(\d+))?)?", raw)
+        if not m:
+            return {}
+        return {
+            "mode": mode_map.get(m.group(1), "unknown"),
+            "format": m.group(2) or "",
+            "operator": m.group(3) or "",
+            "tech": tech_map.get(m.group(4) or "", ""),
+        }
+
+    @staticmethod
+    def _parse_network_list(raw: str) -> list:
+        """Parse AT+COPS=? response into a list of network dicts."""
+        tech_map = {
+            "0": "GSM", "1": "GSM Compact", "2": "UTRAN (3G)",
+            "3": "GSM/EGPRS", "4": "UTRAN/HSDPA", "5": "UTRAN/HSUPA",
+            "6": "UTRAN/HSPA", "7": "LTE",
+        }
+        status_map = {"0": "unknown", "1": "available", "2": "current", "3": "forbidden"}
+        networks = []
+        for m in re.finditer(
+            r'\((\d+),"([^"]*?)","([^"]*?)","(\d+)"(?:,(\d+))?\)', raw
+        ):
+            tech_code = m.group(5) or ""
+            networks.append({
+                "status": status_map.get(m.group(1), "unknown"),
+                "long_name": m.group(2),
+                "short_name": m.group(3),
+                "numeric": m.group(4),
+                "tech": tech_map.get(tech_code, "Unknown") if tech_code else "Unknown",
+            })
+        return networks
 
     @staticmethod
     def _parse_sms_list(raw: str) -> list:
