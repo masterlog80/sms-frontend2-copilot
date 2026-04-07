@@ -19,15 +19,29 @@ reloaded automatically when the container restarts.
 
 ## Screenshots
 
+### Dark Mode
+
 ![USB Modem Dashboard – dark mode](https://github.com/user-attachments/assets/78569a93-e53a-4e32-b8fe-9ecb6c808f22)
 
-### SMS Inbox
+#### SMS Inbox (dark)
 
 ![SMS Inbox – showing received messages with sender, timestamp, and per-message delete](https://github.com/user-attachments/assets/11af59d9-e2f2-4659-9624-4d2e5635cbe3)
 
-### Event Log
+#### Event Log (dark)
 
 ![Event Log – timestamped log entries with INFO, WARNING and ERROR levels and level filters](https://github.com/user-attachments/assets/9a600178-3506-4002-886e-058d4b4f14d6)
+
+### Light Mode
+
+![USB Modem Dashboard – light mode](screenshots/dashboard_light.png)
+
+#### SMS Inbox (light)
+
+![SMS Inbox – light mode, showing received messages with sender, timestamp, and per-message delete](screenshots/sms_inbox_light.png)
+
+#### Event Log (light)
+
+![Event Log – light mode, timestamped log entries with INFO, WARNING and ERROR levels and level filters](screenshots/event_log_light.png)
 
 ---
 
