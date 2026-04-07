@@ -83,17 +83,13 @@
         <i class="bi bi-reception-4"></i> Signal Strength
       </div>
       <div class="stat-card-body">
-        <!-- SVG arc gauge -->
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 120 70">
-            <path class="gauge-track" d="M10,65 A50,50 0 0,1 110,65"/>
-            <path id="gaugeSig" class="gauge-fill gauge-fill--sig" d="M10,65 A50,50 0 0,1 110,65"
-                  stroke-dasharray="157 157" stroke-dashoffset="157"/>
-          </svg>
-          <div class="gauge-center">
-            <span id="sigPercent" class="gauge-value">–</span>
-            <span class="gauge-unit">%</span>
-          </div>
+        <!-- 5-bar signal indicator -->
+        <div class="signal-bars" id="signalBars">
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
+          <div class="signal-bar"></div>
         </div>
         <span id="sigQuality" class="quality-badge quality-unknown">–</span>
       </div>
