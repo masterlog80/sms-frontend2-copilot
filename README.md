@@ -1,6 +1,6 @@
 # USB Modem Dashboard
 
-A **Dockerised web dashboard** for the *HSDPA USB STICK SIM Modem 7.2 Mbps 3G Wireless Network Adapter* (and compatible AT-command modems).
+A **Dockerised web dashboard** for the *USB STICK SIM Modem* (and compatible AT-command modems).
 
 The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device, polls it every **5 seconds**, and presents:
 
@@ -16,7 +16,6 @@ The dashboard connects to the modem over the host's `/dev/ttyUSB0` serial device
 
 History, received SMS and logs are **persisted to a Docker volume** and
 reloaded automatically when the container restarts.
-
 
 ---
 
