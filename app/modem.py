@@ -24,6 +24,17 @@ class ModemError(Exception):
 class ModemManager:
     """Manages serial communication with a USB GSM/HSDPA modem."""
 
+    # GSM-7 basic character table (3GPP TS 23.038)
+    _GSM7_BASIC = (
+        '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?'
+        '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ`¿abcdefghijklmnopqrstuvwxyzäöñüà'
+    )
+    # GSM-7 extension table (preceded by 0x1B escape character)
+    _GSM7_EXT: dict = {
+        0x0A: '\f', 0x14: '^', 0x28: '{', 0x29: '}', 0x2F: '\\',
+        0x3C: '[',  0x3D: '~', 0x3E: ']', 0x40: '|', 0x65: '€',
+    }
+
     def __init__(self, device="/dev/ttyUSB0", baudrate=115200, timeout=5):
         self.device = device
         self.baudrate = baudrate
@@ -187,16 +198,26 @@ class ModemManager:
         """
         Return all SMS messages stored on the SIM as a list of dicts.
         Each dict has: index, status, sender, timestamp, message.
+
+        Reads in PDU mode (AT+CMGF=0) so that the User Data Header (UDH)
+        present in multipart (concatenated) SMS is available for reassembly.
+        Text mode is restored via AT+CMGF=1 before the method returns.
         """
         with self._lock:
             try:
-                # Longer delay needed to receive all messages
-                resp = self._cmd('AT+CMGL="ALL"', delay=1.5)
-                return self._parse_sms_list(resp)
+                self._cmd("AT+CMGF=0")
+                # 4 = list ALL messages; longer delay to receive everything
+                resp = self._cmd("AT+CMGL=4", delay=1.5)
+                return self._parse_pdu_sms_list(resp)
             except Exception as exc:  # noqa: BLE001
                 logger.error("list_sms error: %s", exc)
                 self.connected = False
                 return []
+            finally:
+                try:
+                    self._cmd("AT+CMGF=1")
+                except Exception:  # noqa: BLE001
+                    pass
 
     def delete_sms(self, index: int) -> bool:
         """Delete an SMS by its modem index."""
@@ -280,6 +301,245 @@ class ModemManager:
     # ------------------------------------------------------------------
     # Parsers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decode_gsm7(data: bytes, num_septets: int, fill_bits: int = 0) -> str:
+        """Decode GSM-7 packed bytes into a Unicode string.
+
+        *fill_bits* is the number of padding bits at the start of the first
+        byte (used when a User Data Header precedes the message body).
+        """
+        result = []
+        escape = False
+        for i in range(num_septets):
+            bit_pos = fill_bits + i * 7
+            byte_idx = bit_pos // 8
+            bit_off = bit_pos % 8
+            if byte_idx >= len(data):
+                break
+            val = (data[byte_idx] >> bit_off) & 0x7F
+            bits_in_first = 8 - bit_off
+            if bits_in_first < 7 and byte_idx + 1 < len(data):
+                val |= (data[byte_idx + 1] << bits_in_first) & 0x7F
+            if escape:
+                result.append(ModemManager._GSM7_EXT.get(val, chr(val)))
+                escape = False
+            elif val == 0x1B:
+                escape = True
+            else:
+                result.append(
+                    ModemManager._GSM7_BASIC[val]
+                    if val < len(ModemManager._GSM7_BASIC)
+                    else "?"
+                )
+        return "".join(result)
+
+    @staticmethod
+    def _parse_pdu_timestamp(scts: bytes) -> str:
+        """Decode a 7-byte Service Centre Time Stamp into an ISO-8601 string."""
+        def bcd(b: int) -> int:
+            return (b & 0x0F) * 10 + ((b >> 4) & 0x0F)
+        try:
+            year   = bcd(scts[0]) + 2000
+            month  = bcd(scts[1])
+            day    = bcd(scts[2])
+            hour   = bcd(scts[3])
+            minute = bcd(scts[4])
+            second = bcd(scts[5])
+            return f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}"
+        except Exception:  # noqa: BLE001
+            return ""
+
+    @staticmethod
+    def _parse_pdu(pdu_hex: str, idx: int, status: str) -> dict | None:
+        """Parse one SMS-DELIVER PDU (hex string) into a message dict.
+
+        Returns a dict with keys: index, status, sender, timestamp, message.
+        When the message is part of a concatenated sequence the dict also
+        carries concat_ref, concat_total, and concat_part.
+
+        Returns None when the PDU cannot be parsed or is not a supported type.
+        """
+        try:
+            data = bytes.fromhex(pdu_hex.strip())
+            pos = 0
+
+            # --- SCA (Service Centre Address) ---
+            sca_len = data[pos]
+            pos += 1 + sca_len
+
+            # --- First Octet ---
+            first_octet = data[pos]
+            pos += 1
+            mti  = first_octet & 0x03        # Message Type Indicator
+            udhi = bool(first_octet & 0x40)  # User Data Header Indicator
+
+            # SMS-DELIVER = MTI 0x00; SMS-STATUS-REPORT = MTI 0x02 (skip)
+            if mti == 0x02:
+                return None
+
+            # SMS-SUBMIT (MTI 01) has an extra TP-MR byte; skip it
+            if mti == 0x01:
+                pos += 1  # TP-MR
+
+            # --- Address (OA for DELIVER, DA for SUBMIT) ---
+            addr_len_nibbles = data[pos]
+            pos += 1
+            addr_ton_npi = data[pos]
+            pos += 1
+            addr_byte_len = (addr_len_nibbles + 1) // 2
+            addr_bytes = data[pos:pos + addr_byte_len]
+            pos += addr_byte_len
+
+            ton = (addr_ton_npi >> 4) & 0x07
+            if ton == 5:  # Alphanumeric (GSM-7 encoded)
+                num_chars = (addr_len_nibbles * 4) // 7
+                sender = ModemManager._decode_gsm7(addr_bytes, num_chars)
+            elif ton == 1:  # International
+                digits = ""
+                for byte in addr_bytes:
+                    digits += str(byte & 0x0F)
+                    if (byte >> 4) != 0x0F:
+                        digits += str((byte >> 4) & 0x0F)
+                sender = "+" + digits
+            else:
+                digits = ""
+                for byte in addr_bytes:
+                    digits += str(byte & 0x0F)
+                    if (byte >> 4) != 0x0F:
+                        digits += str((byte >> 4) & 0x0F)
+                sender = digits
+
+            # --- TP-PID ---
+            pos += 1
+
+            # --- TP-DCS (Data Coding Scheme) ---
+            dcs = data[pos]
+            pos += 1
+
+            # --- TP-SCTS (SMS-DELIVER) or TP-VP (SMS-SUBMIT) ---
+            if mti == 0x00:
+                # SMS-DELIVER: fixed 7-byte timestamp
+                scts = data[pos:pos + 7]
+                pos += 7
+                timestamp = ModemManager._parse_pdu_timestamp(scts)
+            else:
+                # SMS-SUBMIT: variable Validity Period; skip it
+                timestamp = ""
+                vpf = (first_octet >> 3) & 0x03
+                if vpf == 0x02:    # relative VP – 1 byte
+                    pos += 1
+                elif vpf in (0x01, 0x03):  # enhanced or absolute VP – 7 bytes
+                    pos += 7
+
+            # --- TP-UDL ---
+            udl = data[pos]
+            pos += 1
+
+            # --- TP-UD ---
+            ud = data[pos:]
+
+            # Determine character encoding from DCS
+            dcs_group = (dcs >> 4) & 0x0F
+            if dcs_group in (0x0, 0x1, 0x2, 0x3):
+                charset = (dcs >> 2) & 0x03   # 0=GSM-7, 1=8-bit, 2=UCS2
+            elif dcs_group == 0xF:
+                charset = 0x01 if (dcs & 0x04) else 0x00
+            else:
+                charset = 0x00  # default to GSM-7
+
+            # --- User Data Header ---
+            concat_info = None
+            udh_len_bytes = 0
+            if udhi and ud:
+                udhl = ud[0]                    # bytes that follow the length field
+                udh_len_bytes = 1 + udhl        # total bytes consumed by UDH
+                udh_data = ud[1:1 + udhl]
+                j = 0
+                while j + 1 < len(udh_data):
+                    iei = udh_data[j]
+                    iel = udh_data[j + 1]
+                    ie_data = udh_data[j + 2:j + 2 + iel]
+                    j += 2 + iel
+                    if iei == 0x00 and iel == 0x03 and len(ie_data) == 3:
+                        # 8-bit concatenation reference
+                        concat_info = {
+                            "ref":   ie_data[0],
+                            "total": ie_data[1],
+                            "part":  ie_data[2],
+                        }
+                        break
+                    if iei == 0x08 and iel == 0x04 and len(ie_data) == 4:
+                        # 16-bit concatenation reference
+                        concat_info = {
+                            "ref":   (ie_data[0] << 8) | ie_data[1],
+                            "total": ie_data[2],
+                            "part":  ie_data[3],
+                        }
+                        break
+
+            # --- Decode message body ---
+            if charset == 0x00:  # GSM-7
+                if udhi:
+                    # When a UDH is present, the UDL counts total septets
+                    # including pseudo-septets consumed by the UDH.  Padding
+                    # bits align the first message septet to a 7-bit boundary
+                    # after the UDH octets.
+                    fill_bits = (7 - (udh_len_bytes * 8) % 7) % 7
+                    udh_septets = (udh_len_bytes * 8 + fill_bits) // 7
+                    num_septets = udl - udh_septets
+                    body = ModemManager._decode_gsm7(
+                        ud[udh_len_bytes:], num_septets, fill_bits
+                    )
+                else:
+                    body = ModemManager._decode_gsm7(ud, udl)
+            elif charset == 0x02:  # UCS2
+                body = ud[udh_len_bytes:].decode("utf-16-be", errors="replace")
+            else:  # 8-bit data
+                body = ud[udh_len_bytes:].decode("latin-1", errors="replace")
+
+            entry: dict = {
+                "index":     idx,
+                "status":    status,
+                "sender":    sender,
+                "timestamp": timestamp,
+                "message":   body,
+            }
+            if concat_info:
+                entry["concat_ref"]   = concat_info["ref"]
+                entry["concat_total"] = concat_info["total"]
+                entry["concat_part"]  = concat_info["part"]
+            return entry
+
+        except Exception as exc:  # noqa: BLE001
+            logger.error("PDU parse error (index=%d): %s", idx, exc)
+            return None
+
+    @staticmethod
+    def _parse_pdu_sms_list(raw: str) -> list:
+        """Parse the AT+CMGL=4 response (PDU mode) into a list of message dicts."""
+        messages = []
+        status_map = {0: "REC UNREAD", 1: "REC READ", 2: "STO UNSENT", 3: "STO SENT"}
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        i = 0
+        while i < len(lines):
+            # PDU mode response format: +CMGL: <index>,<stat>,,<length>
+            # The third (alpha) field is always empty in PDU mode, hence the
+            # two consecutive commas.
+            m = re.match(r"\+CMGL:\s*(\d+),(\d+),,\d*", lines[i])
+            if m:
+                idx       = int(m.group(1))
+                stat_code = int(m.group(2))
+                status    = status_map.get(stat_code, "UNKNOWN")
+                i += 1
+                if i < len(lines) and lines[i] not in ("OK", "ERROR"):
+                    parsed = ModemManager._parse_pdu(lines[i], idx, status)
+                    if parsed is not None:
+                        messages.append(parsed)
+                    i += 1
+            else:
+                i += 1
+        return messages
 
     @staticmethod
     def _parse_current_network(raw: str) -> dict:
