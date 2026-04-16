@@ -50,6 +50,11 @@ SIGNAL_HISTORY_FILE = os.path.join(DATA_DIR, "signal_history.json")
 MAX_LOG_ENTRIES = 500
 # 24 h at 5 s intervals = 17 280 readings
 MAX_SIGNAL_HISTORY = 17280
+# Minimum shared-prefix length (in characters) required to classify a
+# shorter message as a garbled fragment of a longer one.  Candidates
+# shorter than 2 × this value are not considered (avoids false positives
+# for very short messages).
+_MIN_GARBLED_PREFIX_LEN = 20
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -208,6 +213,27 @@ def _combine_multipart_sms(messages: list) -> list:
     return combined
 
 
+def _is_garbled_fragment(candidate_body: str, full_body: str) -> bool:
+    """Return True if *candidate_body* looks like a garbled fragment of *full_body*.
+
+    This handles the case where a previous code version (or text-mode read)
+    produced a corrupted concatenation of multipart SMS pieces.  Such a
+    message is *not* a sub-string of the correct reassembled text, but it
+    shares a significant common prefix with it.
+
+    The check requires:
+    - *full_body* is strictly longer than *candidate_body*.
+    - The first half of *candidate_body* (at least 20 characters) is also
+      the start of *full_body*.
+    """
+    prefix_len = len(candidate_body) // 2
+    if prefix_len < _MIN_GARBLED_PREFIX_LEN:
+        return False
+    if len(full_body) <= len(candidate_body):
+        return False
+    return full_body.startswith(candidate_body[:prefix_len])
+
+
 def _purge_multipart_fragments() -> bool:
     """Remove stale individual multipart SMS parts from *sms_list*.
 
@@ -216,9 +242,11 @@ def _purge_multipart_fragments() -> bool:
     a previous run where the concat UDH was not detected, or from a version
     of the code that did not yet combine multipart messages).
 
-    Any entry whose message body is a non-empty proper sub-string of another
-    entry from the same sender with the same timestamp is treated as a stale
-    fragment and removed.
+    An entry is treated as a stale fragment when, compared to another entry
+    from the same sender and timestamp, its body is either:
+    - a non-empty proper sub-string of the other body, **or**
+    - a garbled shorter version that shares a significant common prefix with
+      the longer body (see ``_is_garbled_fragment``).
 
     Returns ``True`` if any entries were removed (so the caller can save).
     """
@@ -239,7 +267,10 @@ def _purge_multipart_fragments() -> bool:
             for other_idx, other_body in group:
                 if other_idx == candidate_idx or other_idx in to_remove:
                     continue
-                if candidate_body != other_body and candidate_body in other_body:
+                if candidate_body != other_body and (
+                    candidate_body in other_body
+                    or _is_garbled_fragment(candidate_body, other_body)
+                ):
                     to_remove.add(candidate_idx)
                     break
     if to_remove:
@@ -253,13 +284,16 @@ def _is_stale_part(m: dict, sender: str | None, timestamp: str | None, full_text
     """Return True if *m* is a stale individual multipart fragment of *full_text*.
 
     A message is considered stale when it comes from the same sender, carries
-    the same timestamp, and its body is a non-empty proper sub-string of the
-    combined *full_text* produced after reassembly.
+    the same timestamp, and its body is either a non-empty proper sub-string
+    of *full_text* or a garbled shorter version that shares a significant
+    common prefix with *full_text* (see ``_is_garbled_fragment``).
     """
     if m.get("sender") != sender or m.get("timestamp") != timestamp:
         return False
     body = m.get("message") or ""
-    return bool(body) and body != full_text and body in full_text
+    if not body or body == full_text:
+        return False
+    return body in full_text or _is_garbled_fragment(body, full_text)
 
 
 def _merge_sms(new_messages: list):
