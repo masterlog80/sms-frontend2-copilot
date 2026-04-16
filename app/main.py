@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -96,6 +97,8 @@ def _load_persisted():
             with open(SMS_FILE) as f:
                 sms_list = json.load(f)
             logger.info("Loaded %d SMS from disk", len(sms_list))
+            if _purge_multipart_fragments():
+                _save_sms()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not load SMS file: %s", exc)
         sms_list = []
@@ -205,11 +208,70 @@ def _combine_multipart_sms(messages: list) -> list:
     return combined
 
 
+def _purge_multipart_fragments() -> bool:
+    """Remove stale individual multipart SMS parts from *sms_list*.
+
+    After multipart parts are reassembled into a combined message the
+    individual parts are sometimes left in the persisted list (e.g. from
+    a previous run where the concat UDH was not detected, or from a version
+    of the code that did not yet combine multipart messages).
+
+    Any entry whose message body is a non-empty proper sub-string of another
+    entry from the same sender with the same timestamp is treated as a stale
+    fragment and removed.
+
+    Returns ``True`` if any entries were removed (so the caller can save).
+    """
+    global sms_list
+    to_remove: set[int] = set()
+    # Group by (sender, timestamp) to avoid unnecessary cross-group comparisons.
+    sms_groups: defaultdict[tuple[str | None, str | None], list[tuple[int, str]]] = defaultdict(list)
+    for i, msg in enumerate(sms_list):
+        body = msg.get("message") or ""
+        if body:
+            sms_groups[(msg.get("sender"), msg.get("timestamp"))].append((i, body))
+    for group in sms_groups.values():
+        if len(group) < 2:
+            continue
+        for candidate_idx, candidate_body in group:
+            if candidate_idx in to_remove:
+                continue
+            for other_idx, other_body in group:
+                if other_idx == candidate_idx or other_idx in to_remove:
+                    continue
+                if candidate_body != other_body and candidate_body in other_body:
+                    to_remove.add(candidate_idx)
+                    break
+    if to_remove:
+        sms_list[:] = [m for k, m in enumerate(sms_list) if k not in to_remove]
+        logger.info("Purged %d stale multipart SMS fragment(s)", len(to_remove))
+        return True
+    return False
+
+
+def _is_stale_part(m: dict, sender: str | None, timestamp: str | None, full_text: str) -> bool:
+    """Return True if *m* is a stale individual multipart fragment of *full_text*.
+
+    A message is considered stale when it comes from the same sender, carries
+    the same timestamp, and its body is a non-empty proper sub-string of the
+    combined *full_text* produced after reassembly.
+    """
+    if m.get("sender") != sender or m.get("timestamp") != timestamp:
+        return False
+    body = m.get("message") or ""
+    return bool(body) and body != full_text and body in full_text
+
+
 def _merge_sms(new_messages: list):
     """
     Merge freshly read SMS into the global list, preserving messages that
     have been read from disk but are no longer on the SIM (already deleted
     there).  New arrivals are prepended so the UI shows them at the top.
+
+    When a newly added message is longer than an existing entry from the same
+    sender and timestamp, and the existing entry is a proper sub-string of the
+    new message body, that existing entry is a stale individual multipart part
+    and is removed before the combined message is inserted.
     """
     global sms_list
     existing_keys = {(m["sender"], m["timestamp"], m["message"]) for m in sms_list}
@@ -217,6 +279,20 @@ def _merge_sms(new_messages: list):
     for msg in reversed(new_messages):
         key = (msg["sender"], msg["timestamp"], msg["message"])
         if key not in existing_keys:
+            # Remove stale individual parts that are proper substrings of this message.
+            msg_text = msg.get("message") or ""
+            if msg_text:
+                msg_sender = msg.get("sender")
+                msg_ts = msg.get("timestamp")
+                kept, removed_keys = [], set()
+                for m in sms_list:
+                    if _is_stale_part(m, msg_sender, msg_ts, msg_text):
+                        removed_keys.add((m["sender"], m["timestamp"], m["message"]))
+                    else:
+                        kept.append(m)
+                if removed_keys:
+                    sms_list[:] = kept
+                    existing_keys -= removed_keys
             sms_list.insert(0, msg)
             existing_keys.add(key)
             added += 1
@@ -277,8 +353,10 @@ def _do_poll():
     new_sms = _combine_multipart_sms(new_sms)
 
     added = _merge_sms(new_sms)
+    purged = _purge_multipart_fragments()
     if added:
         _append_log("INFO", f"Received {added} new SMS message(s)")
+    if added or purged:
         _save_sms()
 
     with _state_lock:
