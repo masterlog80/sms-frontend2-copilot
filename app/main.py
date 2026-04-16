@@ -29,11 +29,14 @@ DEVICE = os.environ.get("MODEM_DEVICE", "/dev/ttyUSB0")
 _default_devices = [DEVICE] + [
     f"/dev/ttyUSB{i}" for i in range(5) if f"/dev/ttyUSB{i}" != DEVICE
 ]
-MODEM_DEVICES: list[str] = [
+_raw_devices: list[str] = [
     d.strip()
     for d in os.environ.get("MODEM_DEVICES", ",".join(_default_devices)).split(",")
     if d.strip()
 ]
+# Always try the primary MODEM_DEVICE first, even if MODEM_DEVICES is
+# explicitly set and lists a different order.
+MODEM_DEVICES: list[str] = [DEVICE] + [d for d in _raw_devices if d != DEVICE]
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "5"))   # seconds
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

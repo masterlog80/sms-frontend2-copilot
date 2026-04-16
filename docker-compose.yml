@@ -32,8 +32,8 @@ services:
 
     # ── Configuration (override as needed) ───────────────────────────────
     environment:
-      MODEM_DEVICE: /dev/ttyUSB0                                               # primary device (tried first)
-      MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2,/dev/ttyUSB3,/dev/ttyUSB4  # fallback order
+      MODEM_DEVICE: /dev/ttyUSB0   # primary device (always tried first)
+      # MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2  # optional: override fallback order
       POLL_INTERVAL: 5             # seconds between modem polls
       DATA_DIR: /data              # persistent data directory (inside container)
       LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR
