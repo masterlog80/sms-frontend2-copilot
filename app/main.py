@@ -437,12 +437,12 @@ def _forward_to_telegram(msg: dict) -> None:
     sender = msg.get("sender") or "Unknown"
     timestamp = msg.get("timestamp") or ""
     body = msg.get("message") or ""
-    text = f"\U0001f4f1 *New SMS received*\n*From:* {sender}\n*Time:* {timestamp}\n\n{body}"
+    text = f"\U0001f4f1 New SMS received\nFrom: {sender}\nTime: {timestamp}\n\n{body}"
 
     try:
         resp = http_requests.post(
             _TELEGRAM_API.format(token=token),
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": text},
             timeout=10,
         )
         if resp.ok:
@@ -774,7 +774,8 @@ def api_test_telegram():
         body = resp.json() if resp.content else {}
         return jsonify({"success": False, "error": body.get("description", resp.text)}), 400
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"success": False, "error": str(exc)}), 500
+        logger.warning("Telegram test request failed: %s", exc)
+        return jsonify({"success": False, "error": "Could not reach Telegram API"}), 500
 
 
 # ---------------------------------------------------------------------------
