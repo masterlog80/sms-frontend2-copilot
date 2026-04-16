@@ -6,7 +6,7 @@ import re
 import time
 import threading
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     import serial
@@ -124,7 +124,7 @@ class ModemManager:
         if self.raw_log_callback is not None:
             try:
                 self.raw_log_callback(
-                    datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
                     command,
                     decoded,
                 )

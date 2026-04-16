@@ -887,7 +887,10 @@ def api_update_settings():
       ``{"auto_delete_from_sim": true}``
     Only recognised keys are accepted; unknown keys are ignored.
     """
-    bool_keys = {"auto_delete_from_sim", "telegram_enabled", "email_enabled", "email_use_tls", "raw_log_enabled"}
+    bool_keys = {
+        "auto_delete_from_sim", "telegram_enabled", "email_enabled",
+        "email_use_tls", "raw_log_enabled",
+    }
     str_keys  = {
         "telegram_bot_token", "telegram_chat_id",
         "email_username", "email_password", "email_smtp_host",
