@@ -162,6 +162,46 @@ def _append_log(level: str, message: str):
 modem = ModemManager(device=MODEM_DEVICES[0])
 
 
+def _combine_multipart_sms(messages: list) -> list:
+    """
+    Combine concatenated SMS parts into single messages.
+
+    Parts carry ``concat_ref``, ``concat_total``, and ``concat_part`` keys
+    (set by the modem parser when a User Data Header is present).  Parts
+    that share the same ``(sender, concat_ref)`` key are joined in ascending
+    part-number order.  If only some parts are available they are still
+    combined so the user sees as much text as possible.
+
+    Regular (non-multipart) messages are returned unchanged.
+    """
+    groups: dict = {}
+    regular: list = []
+
+    for msg in messages:
+        if "concat_ref" in msg:
+            key = (msg["sender"], msg["concat_ref"])
+            if key not in groups:
+                groups[key] = {}
+            groups[key][msg["concat_part"]] = msg
+        else:
+            regular.append(msg)
+
+    combined = list(regular)
+    for parts in groups.values():
+        sorted_nums = sorted(parts.keys())
+        first = parts[sorted_nums[0]]
+        message_text = "".join(parts[n]["message"] for n in sorted_nums)
+        combined.append({
+            "index": first["index"],
+            "status": first["status"],
+            "sender": first["sender"],
+            "timestamp": first["timestamp"],
+            "message": message_text,
+        })
+
+    return combined
+
+
 def _merge_sms(new_messages: list):
     """
     Merge freshly read SMS into the global list, preserving messages that
@@ -231,6 +271,7 @@ def _do_poll():
     signal = modem.get_signal_strength()
     memory = modem.get_memory()
     new_sms = modem.list_sms()
+    new_sms = _combine_multipart_sms(new_sms)
 
     added = _merge_sms(new_sms)
     if added:
