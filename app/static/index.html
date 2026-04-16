@@ -523,6 +523,48 @@
         </div>
       </div>
 
+      <!-- Raw Modem Log -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-journal-code me-2"></i>Raw Modem Log</span>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Enable toggle -->
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <div class="fw-semibold">Enable raw AT-command logging</div>
+              <div class="text-muted small mt-1">
+                Record every AT command sent to the modem and its raw response.
+                SMS text is always stored in decoded (human-readable) form.
+                The log is saved to <code>raw_modem_log.json</code> in the
+                data directory and can be downloaded below.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleRawLogEnabled" style="width:3em;height:1.5em">
+            </div>
+          </div>
+
+          <!-- Stats row -->
+          <div id="rawLogStats" class="text-muted small mb-3 d-none">
+            <i class="bi bi-info-circle me-1"></i>
+            <span id="rawLogCount">0</span> entries in log
+          </div>
+
+          <!-- Action buttons -->
+          <div class="d-flex gap-2 flex-wrap">
+            <button id="btnExportRawLog" class="btn btn-sm btn-primary">
+              <i class="bi bi-download me-1"></i>Export / Download Log
+            </button>
+            <button id="btnClearRawLog" class="btn btn-sm btn-danger-ghost">
+              <i class="bi bi-trash3 me-1"></i>Clear Log
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /pane-settings -->
 
   </div><!-- /tab-content -->

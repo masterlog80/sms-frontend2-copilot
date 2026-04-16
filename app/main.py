@@ -50,10 +50,13 @@ LOGS_FILE = os.path.join(DATA_DIR, "logs.json")
 STATUS_FILE = os.path.join(DATA_DIR, "status.json")
 SIGNAL_HISTORY_FILE = os.path.join(DATA_DIR, "signal_history.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+RAW_LOG_FILE = os.path.join(DATA_DIR, "raw_modem_log.json")
 
 MAX_LOG_ENTRIES = 500
 # 24 h at 5 s intervals = 17 280 readings
 MAX_SIGNAL_HISTORY = 17280
+# Maximum number of raw modem log entries kept in memory and on disk.
+MAX_RAW_LOG_ENTRIES = 2000
 # Minimum shared-prefix length (in characters) required to classify a
 # shorter message as a garbled fragment of a longer one.  Candidates
 # shorter than 2 × this value are not considered (avoids false positives
@@ -89,6 +92,7 @@ state = {
 sms_list: list = []
 event_log: list = []
 signal_history: list = []
+raw_modem_log: list = []
 settings: dict = {
     "auto_delete_from_sim": False,
     "telegram_enabled": False,
@@ -104,6 +108,7 @@ settings: dict = {
     "email_subject": "New SMS received",
     "email_from": "",
     "email_to": "",
+    "raw_log_enabled": False,
 }
 
 # Delay (in seconds) before an SMS is deleted from SIM memory when
@@ -157,6 +162,8 @@ def _load_persisted():
         logger.warning("Could not load signal history file: %s", exc)
         signal_history = []
 
+    _load_raw_log()
+
 
 def _save_sms():
     _ensure_data_dir()
@@ -183,6 +190,28 @@ def _save_signal_history():
             json.dump(signal_history[-MAX_SIGNAL_HISTORY:], f)
     except Exception as exc:  # noqa: BLE001
         logger.error("Could not save signal history: %s", exc)
+
+
+def _load_raw_log():
+    global raw_modem_log
+    _ensure_data_dir()
+    try:
+        if os.path.exists(RAW_LOG_FILE) and os.path.getsize(RAW_LOG_FILE) > 0:
+            with open(RAW_LOG_FILE) as f:
+                raw_modem_log = json.load(f)
+            logger.info("Loaded %d raw log entries from disk", len(raw_modem_log))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load raw log file: %s", exc)
+        raw_modem_log = []
+
+
+def _save_raw_log():
+    _ensure_data_dir()
+    try:
+        with open(RAW_LOG_FILE, "w") as f:
+            json.dump(raw_modem_log[-MAX_RAW_LOG_ENTRIES:], f)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not save raw log: %s", exc)
 
 
 def _load_settings():
@@ -220,10 +249,32 @@ def _append_log(level: str, message: str):
     _save_logs()
 
 
+def _on_raw_modem_cmd(timestamp: str, command: str, response: str) -> None:
+    """Callback invoked by ModemManager._cmd() for every AT command exchange.
+
+    Appends an ``at_command`` entry to the in-memory raw modem log when raw
+    logging is enabled.  Disk persistence happens once per poll cycle in
+    ``_do_poll()`` to avoid excessive I/O.
+    """
+    if not settings.get("raw_log_enabled"):
+        return
+    entry = {
+        "type": "at_command",
+        "timestamp": timestamp,
+        "command": command,
+        "response": response,
+    }
+    # list.append() is thread-safe in CPython (GIL).  Trim excess entries.
+    raw_modem_log.append(entry)
+    while len(raw_modem_log) > MAX_RAW_LOG_ENTRIES:
+        del raw_modem_log[0]
+
+
 # ---------------------------------------------------------------------------
 # Modem polling loop
 # ---------------------------------------------------------------------------
 modem = ModemManager(device=MODEM_DEVICES[0])
+modem.raw_log_callback = _on_raw_modem_cmd
 
 
 def _combine_multipart_sms(messages: list) -> list:
@@ -628,6 +679,31 @@ def _do_poll():
 
     _record_signal(signal, state["last_updated"])
 
+    # Append a decoded-SMS entry to the raw log when new messages arrived.
+    if settings.get("raw_log_enabled") and added:
+        ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        decoded_entry = {
+            "type": "sms_decoded",
+            "timestamp": ts,
+            "count": len(raw_sms),
+            "messages": [
+                {
+                    "index": m.get("index"),
+                    "status": m.get("status"),
+                    "sender": m.get("sender"),
+                    "timestamp": m.get("timestamp"),
+                    "message": m.get("message"),
+                }
+                for m in raw_sms
+            ],
+        }
+        raw_modem_log.append(decoded_entry)
+        while len(raw_modem_log) > MAX_RAW_LOG_ENTRIES:
+            del raw_modem_log[0]
+
+    if settings.get("raw_log_enabled"):
+        _save_raw_log()
+
     logger.debug("Poll OK — signal=%s memory=%s sms_on_sim=%d", signal, memory, len(raw_sms))
 
 
@@ -811,7 +887,7 @@ def api_update_settings():
       ``{"auto_delete_from_sim": true}``
     Only recognised keys are accepted; unknown keys are ignored.
     """
-    bool_keys = {"auto_delete_from_sim", "telegram_enabled", "email_enabled", "email_use_tls"}
+    bool_keys = {"auto_delete_from_sim", "telegram_enabled", "email_enabled", "email_use_tls", "raw_log_enabled"}
     str_keys  = {
         "telegram_bot_token", "telegram_chat_id",
         "email_username", "email_password", "email_smtp_host",
@@ -918,6 +994,44 @@ def api_test_email():
     except Exception as exc:  # noqa: BLE001
         logger.warning("Email test failed: %s", exc)
         return jsonify({"success": False, "error": "Could not send email – check SMTP settings and server logs"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Raw modem log endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/api/raw_log")
+def api_raw_log():
+    """Return the in-memory raw modem log."""
+    with _state_lock:
+        return jsonify({"entries": list(raw_modem_log), "count": len(raw_modem_log)})
+
+
+@app.route("/api/raw_log", methods=["DELETE"])
+def api_clear_raw_log():
+    """Clear the raw modem log (in-memory and on disk)."""
+    global raw_modem_log
+    with _state_lock:
+        raw_modem_log = []
+    _save_raw_log()
+    _append_log("INFO", "Raw modem log cleared")
+    return jsonify({"success": True})
+
+
+@app.route("/api/raw_log/export")
+def api_export_raw_log():
+    """Download the raw modem log as a JSON file."""
+    import io
+    from flask import Response
+    with _state_lock:
+        data = list(raw_modem_log)
+    content = json.dumps(data, indent=2)
+    filename = f"raw_modem_log_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+    return Response(
+        io.BytesIO(content.encode("utf-8")),
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,9 @@ class ModemManager:
         self._serial = None
         self._lock = threading.Lock()
         self.connected = False
+        # Optional callback invoked after every AT command exchange.
+        # Signature: raw_log_callback(timestamp: str, command: str, response: str)
+        self.raw_log_callback = None
 
     # ------------------------------------------------------------------
     # Connection management
@@ -118,6 +121,15 @@ class ModemManager:
             time.sleep(0.05)
         decoded = response.decode("utf-8", errors="replace").strip()
         logger.debug("CMD %s -> %s", command, decoded)
+        if self.raw_log_callback is not None:
+            try:
+                self.raw_log_callback(
+                    datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                    command,
+                    decoded,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         return decoded
 
     # ------------------------------------------------------------------

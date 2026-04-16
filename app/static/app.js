@@ -702,6 +702,11 @@ async function fetchSettings() {
     if (emFrom)     emFrom.value       = settings.email_from       || '';
     if (emTo)       emTo.value         = settings.email_to         || '';
     if (emSubject)  emSubject.value    = settings.email_subject    || '';
+
+    // Raw log setting
+    const rawToggle = document.getElementById('toggleRawLogEnabled');
+    if (rawToggle) rawToggle.checked = !!settings.raw_log_enabled;
+    if (settings.raw_log_enabled) await refreshRawLogStats();
   } catch (err) { console.warn('fetchSettings error:', err); }
 }
 
@@ -853,6 +858,78 @@ async function testEmailSettings() {
 document.getElementById('btnSaveEmail').addEventListener('click', saveEmailSettings);
 document.getElementById('btnTestEmail').addEventListener('click', testEmailSettings);
 document.getElementById('toggleEmailEnabled').addEventListener('change', saveEmailSettings);
+
+/* ─── Raw Modem Log ──────────────────────────────────────────────────────── */
+async function saveRawLogSetting(enabled) {
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw_log_enabled: enabled }),
+    });
+    if (r.ok) {
+      showToast(
+        enabled ? 'Raw modem logging enabled' : 'Raw modem logging disabled',
+        'success'
+      );
+      if (enabled) await refreshRawLogStats();
+    } else {
+      showToast('Failed to save setting', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+async function refreshRawLogStats() {
+  try {
+    const r = await fetch(`${API}/api/raw_log`);
+    if (!r.ok) return;
+    const { count } = await r.json();
+    const stats = document.getElementById('rawLogStats');
+    const countEl = document.getElementById('rawLogCount');
+    if (stats) stats.classList.toggle('d-none', count === 0);
+    if (countEl) countEl.textContent = count;
+  } catch (err) { console.warn('refreshRawLogStats error:', err); }
+}
+
+async function exportRawLog() {
+  try {
+    const r = await fetch(`${API}/api/raw_log/export`);
+    if (!r.ok) { showToast('Export failed', 'danger'); return; }
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename=([^\s;]+)/);
+    const filename = match ? match[1] : 'raw_modem_log.json';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Log exported', 'success');
+  } catch (err) { showToast('Export error: ' + err.message, 'danger'); }
+}
+
+async function clearRawLog() {
+  if (!confirm('Clear the entire raw modem log? This cannot be undone.')) return;
+  try {
+    const r = await fetch(`${API}/api/raw_log`, { method: 'DELETE' });
+    if (r.ok) {
+      showToast('Raw modem log cleared', 'success');
+      const stats = document.getElementById('rawLogStats');
+      if (stats) stats.classList.add('d-none');
+    } else {
+      showToast('Failed to clear log', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+document.getElementById('toggleRawLogEnabled').addEventListener('change', function () {
+  saveRawLogSetting(this.checked);
+});
+document.getElementById('btnExportRawLog').addEventListener('click', exportRawLog);
+document.getElementById('btnClearRawLog').addEventListener('click', clearRawLog);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
