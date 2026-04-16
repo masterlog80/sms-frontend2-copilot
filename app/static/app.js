@@ -5,6 +5,7 @@
 
 const API = '';
 const REFRESH_INTERVAL = 5;   // seconds
+const EMAIL_DEFAULT_PORT = 587;
 let countdown = REFRESH_INTERVAL;
 let _smsList  = [];
 let _logList  = [];
@@ -693,7 +694,7 @@ async function fetchSettings() {
     const emSubject  = document.getElementById('inputEmailSubject');
     if (emToggle)   emToggle.checked   = !!settings.email_enabled;
     if (emHost)     emHost.value       = settings.email_smtp_host  || '';
-    if (emPort)     emPort.value       = settings.email_smtp_port  ?? 587;
+    if (emPort)     emPort.value       = settings.email_smtp_port  ?? EMAIL_DEFAULT_PORT;
     if (emTls)      emTls.checked      = settings.email_use_tls !== false;
     if (emProtocol) emProtocol.value   = settings.email_protocol   || 'starttls';
     if (emUser)     emUser.value       = settings.email_username   || '';
@@ -778,7 +779,7 @@ document.getElementById('toggleTelegramEnabled').addEventListener('change', save
 async function saveEmailSettings() {
   const enabled  = document.getElementById('toggleEmailEnabled').checked;
   const host     = (document.getElementById('inputEmailSmtpHost').value  || '').trim();
-  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || '587', 10);
+  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || EMAIL_DEFAULT_PORT, 10);
   const useTls   = document.getElementById('toggleEmailUseTls').checked;
   const protocol = document.getElementById('selectEmailProtocol').value || 'starttls';
   const username = (document.getElementById('inputEmailUsername').value  || '').trim();
@@ -813,7 +814,7 @@ async function saveEmailSettings() {
 
 async function testEmailSettings() {
   const host     = (document.getElementById('inputEmailSmtpHost').value  || '').trim();
-  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || '587', 10);
+  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || EMAIL_DEFAULT_PORT, 10);
   const useTls   = document.getElementById('toggleEmailUseTls').checked;
   const protocol = document.getElementById('selectEmailProtocol').value || 'starttls';
   const username = (document.getElementById('inputEmailUsername').value  || '').trim();

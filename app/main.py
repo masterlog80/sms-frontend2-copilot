@@ -479,6 +479,32 @@ def _forward_to_telegram(msg: dict) -> None:
 # Email forwarding
 # ---------------------------------------------------------------------------
 
+def _send_smtp_email(
+    smtp_host: str,
+    smtp_port: int,
+    username: str,
+    password: str,
+    use_tls: bool,
+    protocol: str,
+    mime_msg,
+) -> None:
+    """Send *mime_msg* via SMTP.  Raises ``smtplib.SMTPException`` (or other
+    network errors) on failure; never silences exceptions so callers can
+    handle them appropriately."""
+    if use_tls and protocol == "ssl":
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+            if username:
+                server.login(username, password)
+            server.sendmail(mime_msg["From"], [mime_msg["To"]], mime_msg.as_string())
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            if use_tls and protocol == "starttls":
+                server.starttls()
+            if username:
+                server.login(username, password)
+            server.sendmail(mime_msg["From"], [mime_msg["To"]], mime_msg.as_string())
+
+
 def _forward_to_email(msg: dict) -> None:
     """Forward a single SMS message by email using SMTP.
 
@@ -510,18 +536,7 @@ def _forward_to_email(msg: dict) -> None:
     mime_msg["To"]      = to_addr
 
     try:
-        if use_tls and protocol == "ssl":
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-                if username:
-                    server.login(username, password)
-                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-                if use_tls and protocol == "starttls":
-                    server.starttls()
-                if username:
-                    server.login(username, password)
-                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        _send_smtp_email(smtp_host, smtp_port, username, password, use_tls, protocol, mime_msg)
         logger.debug("Forwarded SMS from %s to email %s", sender_num, to_addr)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not forward SMS by email: %s", exc)
@@ -895,25 +910,14 @@ def api_test_email():
     mime_msg["To"]      = to_addr
 
     try:
-        if use_tls and protocol == "ssl":
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-                if username:
-                    server.login(username, password)
-                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-                if use_tls and protocol == "starttls":
-                    server.starttls()
-                if username:
-                    server.login(username, password)
-                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        _send_smtp_email(smtp_host, smtp_port, username, password, use_tls, protocol, mime_msg)
         return jsonify({"success": True})
     except smtplib.SMTPAuthenticationError as exc:
         logger.warning("Email test auth error: %s", exc)
         return jsonify({"success": False, "error": "Authentication failed – check username/password"}), 400
     except Exception as exc:  # noqa: BLE001
         logger.warning("Email test failed: %s", exc)
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return jsonify({"success": False, "error": "Could not send email – check SMTP settings and server logs"}), 500
 
 
 # ---------------------------------------------------------------------------
