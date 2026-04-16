@@ -671,6 +671,14 @@ async function fetchSettings() {
     const { settings } = await r.json();
     const toggle = document.getElementById('toggleAutoDeleteSim');
     if (toggle) toggle.checked = !!settings.auto_delete_from_sim;
+
+    // Telegram settings
+    const tgToggle = document.getElementById('toggleTelegramEnabled');
+    const tgToken  = document.getElementById('inputTelegramToken');
+    const tgChat   = document.getElementById('inputTelegramChatId');
+    if (tgToggle) tgToggle.checked = !!settings.telegram_enabled;
+    if (tgToken)  tgToken.value   = settings.telegram_bot_token  || '';
+    if (tgChat)   tgChat.value    = settings.telegram_chat_id    || '';
   } catch (err) { console.warn('fetchSettings error:', err); }
 }
 
@@ -695,6 +703,54 @@ async function saveAutoDeleteSetting(enabled) {
 document.getElementById('toggleAutoDeleteSim').addEventListener('change', function () {
   saveAutoDeleteSetting(this.checked);
 });
+
+/* ─── Telegram forwarding settings ──────────────────────────────────────── */
+async function saveTelegramSettings() {
+  const enabled = document.getElementById('toggleTelegramEnabled').checked;
+  const token   = (document.getElementById('inputTelegramToken').value  || '').trim();
+  const chatId  = (document.getElementById('inputTelegramChatId').value || '').trim();
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegram_enabled:   enabled,
+        telegram_bot_token: token,
+        telegram_chat_id:   chatId,
+      }),
+    });
+    if (r.ok) {
+      showToast('Telegram settings saved', 'success');
+    } else {
+      showToast('Failed to save Telegram settings', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+async function testTelegramSettings() {
+  const token  = (document.getElementById('inputTelegramToken').value  || '').trim();
+  const chatId = (document.getElementById('inputTelegramChatId').value || '').trim();
+  const btn    = document.getElementById('btnTestTelegram');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/settings/test_telegram`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_bot_token: token, telegram_chat_id: chatId }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.success) {
+      showToast('Test message sent! Check your Telegram chat.', 'success');
+    } else {
+      showToast('Test failed: ' + (data.error || r.statusText), 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+  finally { btn.disabled = false; }
+}
+
+document.getElementById('btnSaveTelegram').addEventListener('click', saveTelegramSettings);
+document.getElementById('btnTestTelegram').addEventListener('click', testTelegramSettings);
+document.getElementById('toggleTelegramEnabled').addEventListener('change', saveTelegramSettings);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
