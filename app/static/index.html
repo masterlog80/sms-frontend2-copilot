@@ -260,6 +260,29 @@
     <!-- ── Settings ──────────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="pane-settings" role="tabpanel">
 
+      <!-- SMS Settings -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-envelope-gear me-2"></i>SMS Settings</span>
+        </div>
+        <div class="panel-body p-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="fw-semibold">Auto-delete SMS from SIM memory</div>
+              <div class="text-muted small mt-1">
+                Automatically remove SMS from the SIM card once they have been
+                received and stored in the dashboard. This frees SIM memory
+                while keeping messages visible in the inbox.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleAutoDeleteSim" style="width:3em;height:1.5em">
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Network Selection -->
       <div class="panel mb-3">
         <div class="panel-hdr">
