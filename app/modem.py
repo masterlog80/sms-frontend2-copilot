@@ -385,6 +385,34 @@ class ModemManager:
             return hex_str
 
     @staticmethod
+    def _decode_decimal_ascii_sender(s: str) -> str | None:
+        """Decode a sender address encoded as concatenated decimal ASCII codes.
+
+        Some modems return alphanumeric sender addresses as a sequence of
+        decimal character codes concatenated without separators.
+        E.g. ``'Vodafone'`` becomes ``'8611110097102111110101'``
+        (86=V, 111=o, 100=d, 97=a, 102=f, 111=o, 110=n, 101=e).
+
+        Returns the decoded string, or ``None`` if the input cannot be fully
+        decoded into printable ASCII characters (code points 32–126).
+        """
+        result = []
+        i = 0
+        while i < len(s):
+            matched = False
+            for length in (3, 2):
+                if i + length <= len(s):
+                    code = int(s[i:i + length])
+                    if 32 <= code <= 126:
+                        result.append(chr(code))
+                        i += length
+                        matched = True
+                        break
+            if not matched:
+                return None
+        return ''.join(result) if result else None
+
+    @staticmethod
     def _parse_sms_list(raw: str) -> list:
         """Parse the AT+CMGL="ALL" response into a list of message dicts.
 
@@ -408,6 +436,16 @@ class ModemManager:
                 idx = int(m.group(1))
                 status = m.group(2)
                 sender = m.group(3)
+                # Decode sender address when the modem returns it in UCS2 hex
+                # or as concatenated decimal ASCII codes (e.g. some modems
+                # encode 'Vodafone' as '8611110097102111110101').
+                sender_hex = sender.replace(" ", "")
+                if ModemManager._is_ucs2_hex(sender_hex):
+                    sender = ModemManager._decode_ucs2_hex(sender_hex)
+                elif sender.isdigit() and len(sender) > 15:
+                    decoded = ModemManager._decode_decimal_ascii_sender(sender)
+                    if decoded:
+                        sender = decoded
                 timestamp_raw = m.group(4) or ""
                 # collect body lines until next header or end
                 body_lines = []
