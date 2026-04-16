@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   modem-dashboard:
     build:
@@ -8,37 +6,23 @@ services:
     image: modem-dashboard:latest
     container_name: modem-dashboard
     restart: unless-stopped
-
-    # ── Privileged mode required to access /dev/ttyUSB* ──────────────────
     privileged: true
-
-    # ── Device passthrough ────────────────────────────────────────────────
-    # All five ports are passed through so the app can fall back automatically
-    # when the primary device (/dev/ttyUSB0) is unavailable.
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
       - /dev/ttyUSB1:/dev/ttyUSB1
       - /dev/ttyUSB2:/dev/ttyUSB2
       - /dev/ttyUSB3:/dev/ttyUSB3
       - /dev/ttyUSB4:/dev/ttyUSB4
-
-    # ── Persistent data (SMS history, event log) ──────────────────────────
-    volumes:
+   volumes:
       - modem_data:/data
-
-    # ── Published port ────────────────────────────────────────────────────
     ports:
       - "5003:5000"
-
-    # ── Configuration (override as needed) ───────────────────────────────
     environment:
-      MODEM_DEVICE: /dev/ttyUSB0   # primary device (always tried first)
-      # MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2  # optional: override fallback order
+      MODEM_DEVICE: /dev/ttyUSB2   # primary device (always tried first)
+      #MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2  # optional: override fallback order
       POLL_INTERVAL: 5             # seconds between modem polls
       DATA_DIR: /data              # persistent data directory (inside container)
       LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR
-
-    # ── Health check ──────────────────────────────────────────────────────
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/status')"]
