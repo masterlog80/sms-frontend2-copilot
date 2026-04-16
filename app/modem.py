@@ -402,7 +402,10 @@ class ModemManager:
             matched = False
             for length in (3, 2):
                 if i + length <= len(s):
-                    code = int(s[i:i + length])
+                    try:
+                        code = int(s[i:i + length])
+                    except ValueError:
+                        continue
                     if 32 <= code <= 126:
                         result.append(chr(code))
                         i += length
