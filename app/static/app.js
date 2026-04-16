@@ -663,10 +663,44 @@ async function selectNetwork(mode, numeric) {
 
 document.getElementById('btnScanNetworks').addEventListener('click', scanNetworks);
 
+/* ─── App settings ───────────────────────────────────────────────────────── */
+async function fetchSettings() {
+  try {
+    const r = await fetch(`${API}/api/settings`);
+    if (!r.ok) throw new Error(r.statusText);
+    const { settings } = await r.json();
+    const toggle = document.getElementById('toggleAutoDeleteSim');
+    if (toggle) toggle.checked = !!settings.auto_delete_from_sim;
+  } catch (err) { console.warn('fetchSettings error:', err); }
+}
+
+async function saveAutoDeleteSetting(enabled) {
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_delete_from_sim: enabled }),
+    });
+    if (r.ok) {
+      showToast(
+        enabled ? 'Auto-delete from SIM enabled' : 'Auto-delete from SIM disabled',
+        'success'
+      );
+    } else {
+      showToast('Failed to save setting', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+document.getElementById('toggleAutoDeleteSim').addEventListener('change', function () {
+  saveAutoDeleteSetting(this.checked);
+});
+
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   initSignalChart();
   updateRing(REFRESH_INTERVAL);
   fetchSignalHistory().then(() => refreshAll());
+  fetchSettings();
   setInterval(tickCountdown, 1000);
 });

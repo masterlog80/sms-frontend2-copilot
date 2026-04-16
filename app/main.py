@@ -46,6 +46,7 @@ SMS_FILE = os.path.join(DATA_DIR, "sms.json")
 LOGS_FILE = os.path.join(DATA_DIR, "logs.json")
 STATUS_FILE = os.path.join(DATA_DIR, "status.json")
 SIGNAL_HISTORY_FILE = os.path.join(DATA_DIR, "signal_history.json")
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 MAX_LOG_ENTRIES = 500
 # 24 h at 5 s intervals = 17 280 readings
@@ -85,6 +86,7 @@ state = {
 sms_list: list = []
 event_log: list = []
 signal_history: list = []
+settings: dict = {"auto_delete_from_sim": False}
 
 # ---------------------------------------------------------------------------
 # Data persistence helpers
@@ -152,6 +154,28 @@ def _save_signal_history():
             json.dump(signal_history[-MAX_SIGNAL_HISTORY:], f)
     except Exception as exc:  # noqa: BLE001
         logger.error("Could not save signal history: %s", exc)
+
+
+def _load_settings():
+    global settings
+    _ensure_data_dir()
+    try:
+        if os.path.exists(SETTINGS_FILE) and os.path.getsize(SETTINGS_FILE) > 0:
+            with open(SETTINGS_FILE) as f:
+                loaded = json.load(f)
+            settings.update(loaded)
+            logger.info("Loaded settings from disk")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not load settings file: %s", exc)
+
+
+def _save_settings():
+    _ensure_data_dir()
+    try:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(settings, f, indent=2)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not save settings: %s", exc)
 
 
 def _append_log(level: str, message: str):
@@ -393,6 +417,20 @@ def _do_poll():
     if added or purged:
         _save_sms()
 
+    # Auto-delete SMS from SIM memory if the setting is enabled.
+    # All messages returned by list_sms() have already been processed by
+    # _merge_sms(), so they are either newly stored or were already present
+    # in the application store. Deleting them frees SIM storage.
+    if settings.get("auto_delete_from_sim") and new_sms:
+        deleted_count = 0
+        for msg in new_sms:
+            idx = msg.get("index")
+            if idx is not None:
+                if modem.delete_sms(idx):
+                    deleted_count += 1
+        if deleted_count:
+            _append_log("INFO", f"Auto-deleted {deleted_count} SMS from SIM memory")
+
     with _state_lock:
         state["signal"] = signal
         state["memory"] = memory
@@ -570,12 +608,40 @@ def api_select_network():
     return jsonify({"success": False, "error": "Selection failed; check modem response"}), 500
 
 
+@app.route("/api/settings", methods=["GET"])
+def api_get_settings():
+    """Return current application settings."""
+    return jsonify({"settings": dict(settings)})
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_update_settings():
+    """Update application settings.
+
+    Request body (JSON): a partial or full settings object, e.g.
+      ``{"auto_delete_from_sim": true}``
+    Only recognised keys are accepted; unknown keys are ignored.
+    """
+    allowed_keys = {"auto_delete_from_sim"}
+    data = request.get_json(force=True) or {}
+    updated = {}
+    for key in allowed_keys:
+        if key in data:
+            settings[key] = bool(data[key])
+            updated[key] = settings[key]
+    _save_settings()
+    if updated:
+        _append_log("INFO", f"Settings updated: {updated}")
+    return jsonify({"success": True, "settings": dict(settings)})
+
+
 # ---------------------------------------------------------------------------
 # Application startup
 # ---------------------------------------------------------------------------
 
 def create_app():
     _load_persisted()
+    _load_settings()
     _append_log("INFO", "Dashboard started")
     t = threading.Thread(target=_poll, daemon=True)
     t.start()
