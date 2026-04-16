@@ -226,6 +226,8 @@ class ModemManager:
                     "5": "Registered (Roaming)",
                 }
                 info["network_status"] = status_map.get(m2.group(1) if m2 else "0", "Unknown")
+                net = self._parse_current_network(self._cmd("AT+COPS?"))
+                info["network_name"] = net.get("operator") or "Unknown"
             except Exception as exc:  # noqa: BLE001
                 logger.warning("get_modem_info partial error: %s", exc)
             return info
