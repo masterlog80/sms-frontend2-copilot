@@ -10,10 +10,12 @@ be mapped to a Docker volume.
 import json
 import logging
 import os
+import smtplib
 import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
+from email.mime.text import MIMEText
 
 import requests as http_requests
 from flask import Flask, jsonify, request, send_from_directory
@@ -92,6 +94,16 @@ settings: dict = {
     "telegram_enabled": False,
     "telegram_bot_token": "",
     "telegram_chat_id": "",
+    "email_enabled": False,
+    "email_username": "",
+    "email_password": "",
+    "email_smtp_host": "",
+    "email_smtp_port": 587,
+    "email_use_tls": True,
+    "email_protocol": "starttls",
+    "email_subject": "New SMS received",
+    "email_from": "",
+    "email_to": "",
 }
 
 # Delay (in seconds) before an SMS is deleted from SIM memory when
@@ -463,6 +475,59 @@ def _forward_to_telegram(msg: dict) -> None:
         _append_log("WARNING", f"Telegram forward error: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# Email forwarding
+# ---------------------------------------------------------------------------
+
+def _forward_to_email(msg: dict) -> None:
+    """Forward a single SMS message by email using SMTP.
+
+    Uses the email settings stored in *settings*.  Failures are logged but
+    never propagated so they cannot disrupt the polling loop.
+    """
+    smtp_host = (settings.get("email_smtp_host") or "").strip()
+    smtp_port = int(settings.get("email_smtp_port") or 587)
+    username  = (settings.get("email_username")  or "").strip()
+    password  = (settings.get("email_password")  or "").strip()
+    from_addr = (settings.get("email_from")      or "").strip()
+    to_addr   = (settings.get("email_to")        or "").strip()
+    subject   = (settings.get("email_subject")   or "New SMS received").strip()
+    use_tls   = bool(settings.get("email_use_tls", True))
+    protocol  = (settings.get("email_protocol")  or "starttls").strip().lower()
+
+    if not smtp_host or not to_addr:
+        logger.warning("Email forwarding enabled but SMTP host or To address is not set")
+        return
+
+    sender_num = msg.get("sender") or "Unknown"
+    timestamp  = msg.get("timestamp") or ""
+    body       = msg.get("message") or ""
+
+    mail_body = f"From: {sender_num}\nTime: {timestamp}\n\n{body}"
+    mime_msg = MIMEText(mail_body, "plain", "utf-8")
+    mime_msg["Subject"] = subject
+    mime_msg["From"]    = from_addr or username
+    mime_msg["To"]      = to_addr
+
+    try:
+        if use_tls and protocol == "ssl":
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+                if username:
+                    server.login(username, password)
+                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                if use_tls and protocol == "starttls":
+                    server.starttls()
+                if username:
+                    server.login(username, password)
+                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        logger.debug("Forwarded SMS from %s to email %s", sender_num, to_addr)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not forward SMS by email: %s", exc)
+        _append_log("WARNING", f"Email forward error: {exc}")
+
+
 def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
@@ -524,6 +589,10 @@ def _do_poll():
         if settings.get("telegram_enabled"):
             for msg in sms_list[:added]:
                 _forward_to_telegram(msg)
+        # Forward newly added messages by email if the feature is enabled.
+        if settings.get("email_enabled"):
+            for msg in sms_list[:added]:
+                _forward_to_email(msg)
     if added or purged:
         _save_sms()
 
@@ -727,8 +796,13 @@ def api_update_settings():
       ``{"auto_delete_from_sim": true}``
     Only recognised keys are accepted; unknown keys are ignored.
     """
-    bool_keys = {"auto_delete_from_sim", "telegram_enabled"}
-    str_keys  = {"telegram_bot_token", "telegram_chat_id"}
+    bool_keys = {"auto_delete_from_sim", "telegram_enabled", "email_enabled", "email_use_tls"}
+    str_keys  = {
+        "telegram_bot_token", "telegram_chat_id",
+        "email_username", "email_password", "email_smtp_host",
+        "email_protocol", "email_subject", "email_from", "email_to",
+    }
+    int_keys  = {"email_smtp_port"}
     data = request.get_json(force=True) or {}
     updated = {}
     for key in bool_keys:
@@ -739,6 +813,13 @@ def api_update_settings():
         if key in data:
             settings[key] = str(data[key]).strip()
             updated[key] = settings[key]
+    for key in int_keys:
+        if key in data:
+            try:
+                settings[key] = int(data[key])
+                updated[key] = settings[key]
+            except (TypeError, ValueError):
+                pass
     _save_settings()
     if updated:
         _append_log("INFO", f"Settings updated: {list(updated.keys())}")
@@ -776,6 +857,63 @@ def api_test_telegram():
     except Exception as exc:  # noqa: BLE001
         logger.warning("Telegram test request failed: %s", exc)
         return jsonify({"success": False, "error": "Could not reach Telegram API"}), 500
+
+
+@app.route("/api/settings/test_email", methods=["POST"])
+def api_test_email():
+    """Send a test email using the provided (or persisted) email settings.
+
+    Request body fields mirror the email settings keys; any omitted field
+    falls back to the persisted value so the user can test before saving.
+    Returns ``{"success": true}`` on success, or an error description.
+    """
+    data = request.get_json(force=True) or {}
+
+    def _val(key, default=""):
+        return str(data.get(key) or settings.get(key) or default).strip()
+
+    smtp_host = _val("email_smtp_host")
+    to_addr   = _val("email_to")
+    from_addr = _val("email_from")
+    username  = _val("email_username")
+    password  = _val("email_password")
+    subject   = _val("email_subject") or "New SMS received"
+    protocol  = _val("email_protocol", "starttls").lower()
+    use_tls   = bool(data.get("email_use_tls") if "email_use_tls" in data else settings.get("email_use_tls", True))
+
+    try:
+        smtp_port = int(data.get("email_smtp_port") or settings.get("email_smtp_port") or 587)
+    except (TypeError, ValueError):
+        smtp_port = 587
+
+    if not smtp_host or not to_addr:
+        return jsonify({"success": False, "error": "SMTP host and To address are required"}), 400
+
+    mime_msg = MIMEText("\u2705 SMS Dashboard: Email forwarding test successful!", "plain", "utf-8")
+    mime_msg["Subject"] = f"[Test] {subject}"
+    mime_msg["From"]    = from_addr or username
+    mime_msg["To"]      = to_addr
+
+    try:
+        if use_tls and protocol == "ssl":
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+                if username:
+                    server.login(username, password)
+                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                if use_tls and protocol == "starttls":
+                    server.starttls()
+                if username:
+                    server.login(username, password)
+                server.sendmail(mime_msg["From"], [to_addr], mime_msg.as_string())
+        return jsonify({"success": True})
+    except smtplib.SMTPAuthenticationError as exc:
+        logger.warning("Email test auth error: %s", exc)
+        return jsonify({"success": False, "error": "Authentication failed – check username/password"}), 400
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Email test failed: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------

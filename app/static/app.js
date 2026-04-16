@@ -679,6 +679,28 @@ async function fetchSettings() {
     if (tgToggle) tgToggle.checked = !!settings.telegram_enabled;
     if (tgToken)  tgToken.value   = settings.telegram_bot_token  || '';
     if (tgChat)   tgChat.value    = settings.telegram_chat_id    || '';
+
+    // Email settings
+    const emToggle   = document.getElementById('toggleEmailEnabled');
+    const emHost     = document.getElementById('inputEmailSmtpHost');
+    const emPort     = document.getElementById('inputEmailSmtpPort');
+    const emTls      = document.getElementById('toggleEmailUseTls');
+    const emProtocol = document.getElementById('selectEmailProtocol');
+    const emUser     = document.getElementById('inputEmailUsername');
+    const emPass     = document.getElementById('inputEmailPassword');
+    const emFrom     = document.getElementById('inputEmailFrom');
+    const emTo       = document.getElementById('inputEmailTo');
+    const emSubject  = document.getElementById('inputEmailSubject');
+    if (emToggle)   emToggle.checked   = !!settings.email_enabled;
+    if (emHost)     emHost.value       = settings.email_smtp_host  || '';
+    if (emPort)     emPort.value       = settings.email_smtp_port  ?? 587;
+    if (emTls)      emTls.checked      = settings.email_use_tls !== false;
+    if (emProtocol) emProtocol.value   = settings.email_protocol   || 'starttls';
+    if (emUser)     emUser.value       = settings.email_username   || '';
+    if (emPass)     emPass.value       = settings.email_password   || '';
+    if (emFrom)     emFrom.value       = settings.email_from       || '';
+    if (emTo)       emTo.value         = settings.email_to         || '';
+    if (emSubject)  emSubject.value    = settings.email_subject    || '';
   } catch (err) { console.warn('fetchSettings error:', err); }
 }
 
@@ -751,6 +773,85 @@ async function testTelegramSettings() {
 document.getElementById('btnSaveTelegram').addEventListener('click', saveTelegramSettings);
 document.getElementById('btnTestTelegram').addEventListener('click', testTelegramSettings);
 document.getElementById('toggleTelegramEnabled').addEventListener('change', saveTelegramSettings);
+
+/* ─── Email forwarding settings ──────────────────────────────────────────── */
+async function saveEmailSettings() {
+  const enabled  = document.getElementById('toggleEmailEnabled').checked;
+  const host     = (document.getElementById('inputEmailSmtpHost').value  || '').trim();
+  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || '587', 10);
+  const useTls   = document.getElementById('toggleEmailUseTls').checked;
+  const protocol = document.getElementById('selectEmailProtocol').value || 'starttls';
+  const username = (document.getElementById('inputEmailUsername').value  || '').trim();
+  const password = (document.getElementById('inputEmailPassword').value  || '');
+  const from     = (document.getElementById('inputEmailFrom').value      || '').trim();
+  const to       = (document.getElementById('inputEmailTo').value        || '').trim();
+  const subject  = (document.getElementById('inputEmailSubject').value   || '').trim();
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email_enabled:   enabled,
+        email_smtp_host: host,
+        email_smtp_port: port,
+        email_use_tls:   useTls,
+        email_protocol:  protocol,
+        email_username:  username,
+        email_password:  password,
+        email_from:      from,
+        email_to:        to,
+        email_subject:   subject,
+      }),
+    });
+    if (r.ok) {
+      showToast('Email settings saved', 'success');
+    } else {
+      showToast('Failed to save email settings', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+async function testEmailSettings() {
+  const host     = (document.getElementById('inputEmailSmtpHost').value  || '').trim();
+  const port     = parseInt(document.getElementById('inputEmailSmtpPort').value || '587', 10);
+  const useTls   = document.getElementById('toggleEmailUseTls').checked;
+  const protocol = document.getElementById('selectEmailProtocol').value || 'starttls';
+  const username = (document.getElementById('inputEmailUsername').value  || '').trim();
+  const password = (document.getElementById('inputEmailPassword').value  || '');
+  const from     = (document.getElementById('inputEmailFrom').value      || '').trim();
+  const to       = (document.getElementById('inputEmailTo').value        || '').trim();
+  const subject  = (document.getElementById('inputEmailSubject').value   || '').trim();
+  const btn = document.getElementById('btnTestEmail');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/settings/test_email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email_smtp_host: host,
+        email_smtp_port: port,
+        email_use_tls:   useTls,
+        email_protocol:  protocol,
+        email_username:  username,
+        email_password:  password,
+        email_from:      from,
+        email_to:        to,
+        email_subject:   subject,
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.success) {
+      showToast('Test email sent! Check your inbox.', 'success');
+    } else {
+      showToast('Test failed: ' + (data.error || r.statusText), 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+  finally { btn.disabled = false; }
+}
+
+document.getElementById('btnSaveEmail').addEventListener('click', saveEmailSettings);
+document.getElementById('btnTestEmail').addEventListener('click', testEmailSettings);
+document.getElementById('toggleEmailEnabled').addEventListener('change', saveEmailSettings);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {

@@ -350,6 +350,145 @@
         </div>
       </div>
 
+      <!-- Email Forwarding -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-envelope-at me-2"></i>Email Forwarding</span>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Enable toggle -->
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <div class="fw-semibold">Forward received SMS by email</div>
+              <div class="text-muted small mt-1">
+                Automatically send every incoming SMS to an email address via
+                SMTP. Configure the server details below, then enable.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleEmailEnabled" style="width:3em;height:1.5em">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- SMTP Address -->
+            <div class="col-sm-8">
+              <label for="inputEmailSmtpHost" class="form-label fw-semibold small">
+                SMTP Address
+              </label>
+              <input type="text" class="form-control font-monospace small"
+                     id="inputEmailSmtpHost"
+                     placeholder="smtp.example.com"
+                     autocomplete="off">
+            </div>
+            <!-- SMTP Port -->
+            <div class="col-sm-4">
+              <label for="inputEmailSmtpPort" class="form-label fw-semibold small">
+                SMTP Port
+              </label>
+              <input type="number" class="form-control font-monospace small"
+                     id="inputEmailSmtpPort"
+                     placeholder="587" min="1" max="65535"
+                     autocomplete="off">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- Encryption -->
+            <div class="col-sm-4">
+              <label class="form-label fw-semibold small">Encryption</label>
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="toggleEmailUseTls" style="width:2.5em;height:1.3em">
+                <label class="form-check-label small" for="toggleEmailUseTls">
+                  Enable TLS
+                </label>
+              </div>
+            </div>
+            <!-- Encryption protocol -->
+            <div class="col-sm-4">
+              <label for="selectEmailProtocol" class="form-label fw-semibold small">
+                Encryption Protocol
+              </label>
+              <select class="form-select small" id="selectEmailProtocol">
+                <option value="starttls">STARTTLS</option>
+                <option value="ssl">SSL / TLS</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- Username -->
+            <div class="col-sm-6">
+              <label for="inputEmailUsername" class="form-label fw-semibold small">
+                Username
+              </label>
+              <input type="text" class="form-control small"
+                     id="inputEmailUsername"
+                     placeholder="user@example.com"
+                     autocomplete="off">
+            </div>
+            <!-- Password -->
+            <div class="col-sm-6">
+              <label for="inputEmailPassword" class="form-label fw-semibold small">
+                Password
+              </label>
+              <input type="password" class="form-control small"
+                     id="inputEmailPassword"
+                     placeholder="••••••••"
+                     autocomplete="new-password">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- From Address -->
+            <div class="col-sm-6">
+              <label for="inputEmailFrom" class="form-label fw-semibold small">
+                From Address
+              </label>
+              <input type="email" class="form-control small"
+                     id="inputEmailFrom"
+                     placeholder="sms-dashboard@example.com"
+                     autocomplete="off">
+              <div class="form-text">Defaults to the username if left blank.</div>
+            </div>
+            <!-- To Address -->
+            <div class="col-sm-6">
+              <label for="inputEmailTo" class="form-label fw-semibold small">
+                To Address
+              </label>
+              <input type="email" class="form-control small"
+                     id="inputEmailTo"
+                     placeholder="you@example.com"
+                     autocomplete="off">
+            </div>
+          </div>
+
+          <!-- Subject -->
+          <div class="mb-3">
+            <label for="inputEmailSubject" class="form-label fw-semibold small">
+              Subject
+            </label>
+            <input type="text" class="form-control small"
+                   id="inputEmailSubject"
+                   placeholder="New SMS received"
+                   autocomplete="off">
+          </div>
+
+          <!-- Action buttons -->
+          <div class="d-flex gap-2 flex-wrap">
+            <button id="btnSaveEmail" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy me-1"></i>Save
+            </button>
+            <button id="btnTestEmail" class="btn btn-sm btn-ghost">
+              <i class="bi bi-send me-1"></i>Send Test Email
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Network Selection -->
       <div class="panel mb-3">
         <div class="panel-hdr">
