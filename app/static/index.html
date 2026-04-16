@@ -283,6 +283,73 @@
         </div>
       </div>
 
+      <!-- Telegram Forwarding -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-telegram me-2"></i>Telegram Forwarding</span>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Enable toggle -->
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <div class="fw-semibold">Forward received SMS to Telegram</div>
+              <div class="text-muted small mt-1">
+                Automatically send every incoming SMS to a Telegram chat via a
+                bot. Configure the bot token and chat ID below, then enable.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleTelegramEnabled" style="width:3em;height:1.5em">
+            </div>
+          </div>
+
+          <!-- Bot token -->
+          <div class="mb-3">
+            <label for="inputTelegramToken" class="form-label fw-semibold small">
+              Bot Token
+            </label>
+            <input type="password" class="form-control font-monospace small"
+                   id="inputTelegramToken"
+                   placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                   autocomplete="off">
+            <div class="form-text">
+              Create a bot with
+              <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>
+              and paste the token here.
+            </div>
+          </div>
+
+          <!-- Chat ID -->
+          <div class="mb-3">
+            <label for="inputTelegramChatId" class="form-label fw-semibold small">
+              Chat ID
+            </label>
+            <input type="text" class="form-control font-monospace small"
+                   id="inputTelegramChatId"
+                   placeholder="-100123456789"
+                   autocomplete="off">
+            <div class="form-text">
+              Your personal chat ID, a group ID, or a channel ID. Send a
+              message to
+              <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a>
+              to find your ID.
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="d-flex gap-2 flex-wrap">
+            <button id="btnSaveTelegram" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy me-1"></i>Save
+            </button>
+            <button id="btnTestTelegram" class="btn btn-sm btn-ghost">
+              <i class="bi bi-send me-1"></i>Send Test Message
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Network Selection -->
       <div class="panel mb-3">
         <div class="panel-hdr">

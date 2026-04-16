@@ -15,6 +15,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
+import requests as http_requests
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
@@ -86,7 +87,12 @@ state = {
 sms_list: list = []
 event_log: list = []
 signal_history: list = []
-settings: dict = {"auto_delete_from_sim": False}
+settings: dict = {
+    "auto_delete_from_sim": False,
+    "telegram_enabled": False,
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+}
 
 # Delay (in seconds) before an SMS is deleted from SIM memory when
 # auto_delete_from_sim is enabled.  A 60-second window gives multipart
@@ -409,6 +415,54 @@ def _process_pending_sim_deletions() -> None:
             _append_log("INFO", f"Auto-deleted {deleted_count} SMS from SIM memory")
 
 
+# ---------------------------------------------------------------------------
+# Telegram forwarding
+# ---------------------------------------------------------------------------
+
+_TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+def _forward_to_telegram(msg: dict) -> None:
+    """Forward a single SMS message to a Telegram chat.
+
+    Uses the bot token and chat ID stored in *settings*.  Failures are
+    logged but never propagated so they cannot disrupt the polling loop.
+    """
+    token = (settings.get("telegram_bot_token") or "").strip()
+    chat_id = (settings.get("telegram_chat_id") or "").strip()
+    if not token or not chat_id:
+        logger.warning("Telegram forwarding enabled but bot token or chat ID is not set")
+        return
+
+    sender = msg.get("sender") or "Unknown"
+    timestamp = msg.get("timestamp") or ""
+    body = msg.get("message") or ""
+    text = f"\U0001f4f1 *New SMS received*\n*From:* {sender}\n*Time:* {timestamp}\n\n{body}"
+
+    try:
+        resp = http_requests.post(
+            _TELEGRAM_API.format(token=token),
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        if resp.ok:
+            logger.debug("Forwarded SMS from %s to Telegram chat %s", sender, chat_id)
+        else:
+            data = resp.json() if resp.content else {}
+            logger.warning(
+                "Telegram API returned %d: %s",
+                resp.status_code,
+                data.get("description", resp.text),
+            )
+            _append_log(
+                "WARNING",
+                f"Telegram forward failed ({resp.status_code}): {data.get('description', '')}",
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not forward SMS to Telegram: %s", exc)
+        _append_log("WARNING", f"Telegram forward error: {exc}")
+
+
 def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
@@ -466,6 +520,10 @@ def _do_poll():
     purged = _purge_multipart_fragments()
     if added:
         _append_log("INFO", f"Received {added} new SMS message(s)")
+        # Forward newly added messages to Telegram if the feature is enabled.
+        if settings.get("telegram_enabled"):
+            for msg in sms_list[:added]:
+                _forward_to_telegram(msg)
     if added or purged:
         _save_sms()
 
@@ -669,17 +727,54 @@ def api_update_settings():
       ``{"auto_delete_from_sim": true}``
     Only recognised keys are accepted; unknown keys are ignored.
     """
-    allowed_keys = {"auto_delete_from_sim"}
+    bool_keys = {"auto_delete_from_sim", "telegram_enabled"}
+    str_keys  = {"telegram_bot_token", "telegram_chat_id"}
     data = request.get_json(force=True) or {}
     updated = {}
-    for key in allowed_keys:
+    for key in bool_keys:
         if key in data:
             settings[key] = bool(data[key])
             updated[key] = settings[key]
+    for key in str_keys:
+        if key in data:
+            settings[key] = str(data[key]).strip()
+            updated[key] = settings[key]
     _save_settings()
     if updated:
-        _append_log("INFO", f"Settings updated: {updated}")
+        _append_log("INFO", f"Settings updated: {list(updated.keys())}")
     return jsonify({"success": True, "settings": dict(settings)})
+
+
+@app.route("/api/settings/test_telegram", methods=["POST"])
+def api_test_telegram():
+    """Send a test message to the configured Telegram chat.
+
+    Returns ``{"success": true}`` on success, or an error description.
+    Uses the token/chat_id from the request body if provided, falling back
+    to the persisted settings so the user can test before saving.
+    """
+    data = request.get_json(force=True) or {}
+    token   = str(data.get("telegram_bot_token") or settings.get("telegram_bot_token") or "").strip()
+    chat_id = str(data.get("telegram_chat_id")   or settings.get("telegram_chat_id")   or "").strip()
+
+    if not token or not chat_id:
+        return jsonify({"success": False, "error": "Bot token and chat ID are required"}), 400
+
+    try:
+        resp = http_requests.post(
+            _TELEGRAM_API.format(token=token),
+            json={
+                "chat_id": chat_id,
+                "text": "\u2705 SMS Dashboard: Telegram forwarding test successful!",
+            },
+            timeout=10,
+        )
+        if resp.ok:
+            return jsonify({"success": True})
+        body = resp.json() if resp.content else {}
+        return jsonify({"success": False, "error": body.get("description", resp.text)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------
