@@ -322,8 +322,75 @@ class ModemManager:
         return networks
 
     @staticmethod
+    def _is_ucs2_hex(s: str) -> bool:
+        """Return True if *s* looks like a UCS2 (UTF-16 BE) hex-encoded body.
+
+        The check requires:
+        - All characters are valid hex digits.
+        - The length is a multiple of 4 (one UTF-16 code unit = 2 bytes = 4 hex chars).
+        - At least one code unit has a zero high byte (0x00XX), which is the
+          normal pattern for Basic-Latin text encoded in UCS2 and distinguishes
+          it from a coincidentally all-hex GSM-7 message body.
+        """
+        if not s or len(s) % 4 != 0:
+            return False
+        if not re.match(r'^[0-9A-Fa-f]+$', s):
+            return False
+        # Inspect high bytes (every other 2-char group starting at offset 0).
+        high_bytes = [s[i:i + 2] for i in range(0, len(s), 4)]
+        return any(b.upper() == '00' for b in high_bytes)
+
+    @staticmethod
+    def _parse_udh_concat(hex_body: str):
+        """Parse a concatenated-SMS User Data Header embedded in a hex body.
+
+        Supports 8-bit reference (IEI=0x00, UDHL=0x05) and 16-bit reference
+        (IEI=0x08, UDHL=0x06) formats.
+
+        Returns ``(ref, total_parts, part_num, message_hex)`` when a valid
+        concatenation UDH is found, or ``None`` otherwise.
+        """
+        try:
+            if len(hex_body) < 12:
+                return None
+            udhl = int(hex_body[0:2], 16)
+            iei  = int(hex_body[2:4], 16)
+            iel  = int(hex_body[4:6], 16)
+            skip = (udhl + 1) * 2  # bytes to skip = (UDHL value + 1) × 2 hex chars
+            if iei == 0x00 and iel == 0x03 and udhl == 0x05 and len(hex_body) >= skip:
+                ref   = int(hex_body[6:8], 16)
+                total = int(hex_body[8:10], 16)
+                part  = int(hex_body[10:12], 16)
+                return ref, total, part, hex_body[skip:]
+            if iei == 0x08 and iel == 0x04 and udhl == 0x06 and len(hex_body) >= skip:
+                ref   = (int(hex_body[6:8], 16) << 8) | int(hex_body[8:10], 16)
+                total = int(hex_body[10:12], 16)
+                part  = int(hex_body[12:14], 16)
+                return ref, total, part, hex_body[skip:]
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    @staticmethod
+    def _decode_ucs2_hex(hex_str: str) -> str:
+        """Decode a UCS2 (UTF-16 BE) hex string to a Python unicode string.
+
+        Falls back to the original string if decoding fails.
+        """
+        try:
+            return bytes.fromhex(hex_str).decode('utf-16-be')
+        except (ValueError, UnicodeDecodeError):
+            return hex_str
+
+    @staticmethod
     def _parse_sms_list(raw: str) -> list:
-        """Parse the AT+CMGL="ALL" response into a list of message dicts."""
+        """Parse the AT+CMGL="ALL" response into a list of message dicts.
+
+        Message bodies that are UCS2 hex-encoded are decoded to readable text.
+        Multipart (concatenated) SMS parts include ``concat_ref``,
+        ``concat_total``, and ``concat_part`` keys so that callers can
+        reassemble them.
+        """
         messages = []
         # Split on message header lines
         lines = raw.splitlines()
@@ -358,15 +425,31 @@ class ModemManager:
                     ts = datetime.strptime(ts_clean, "%y/%m/%d,%H:%M:%S").isoformat()
                 except Exception:  # noqa: BLE001
                     ts = timestamp_raw
-                messages.append(
-                    {
-                        "index": idx,
-                        "status": status,
-                        "sender": sender,
-                        "timestamp": ts,
-                        "message": body,
-                    }
-                )
+
+                # Decode UCS2 hex-encoded bodies and extract multipart UDH info.
+                body_hex = body.replace(" ", "")
+                concat_info = None
+                if ModemManager._is_ucs2_hex(body_hex):
+                    udh = ModemManager._parse_udh_concat(body_hex)
+                    if udh:
+                        ref, total, part, msg_hex = udh
+                        body = ModemManager._decode_ucs2_hex(msg_hex)
+                        concat_info = {"ref": ref, "total": total, "part": part}
+                    else:
+                        body = ModemManager._decode_ucs2_hex(body_hex)
+
+                entry = {
+                    "index": idx,
+                    "status": status,
+                    "sender": sender,
+                    "timestamp": ts,
+                    "message": body,
+                }
+                if concat_info:
+                    entry["concat_ref"]   = concat_info["ref"]
+                    entry["concat_total"] = concat_info["total"]
+                    entry["concat_part"]  = concat_info["part"]
+                messages.append(entry)
             else:
                 i += 1
         return messages
