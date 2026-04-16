@@ -417,8 +417,10 @@ def _do_poll():
     if added or purged:
         _save_sms()
 
-    # Auto-delete SMS from SIM memory if the setting is enabled and there are
-    # messages on the SIM that have already been stored in the application.
+    # Auto-delete SMS from SIM memory if the setting is enabled.
+    # All messages returned by list_sms() have already been processed by
+    # _merge_sms(), so they are either newly stored or were already present
+    # in the application store. Deleting them frees SIM storage.
     if settings.get("auto_delete_from_sim") and new_sms:
         deleted_count = 0
         for msg in new_sms:
@@ -620,10 +622,10 @@ def api_update_settings():
       ``{"auto_delete_from_sim": true}``
     Only recognised keys are accepted; unknown keys are ignored.
     """
-    ALLOWED_KEYS = {"auto_delete_from_sim"}
+    allowed_keys = {"auto_delete_from_sim"}
     data = request.get_json(force=True) or {}
     updated = {}
-    for key in ALLOWED_KEYS:
+    for key in allowed_keys:
         if key in data:
             settings[key] = bool(data[key])
             updated[key] = settings[key]
