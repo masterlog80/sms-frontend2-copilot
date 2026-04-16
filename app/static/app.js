@@ -164,7 +164,8 @@ function updateStatus(data) {
   document.getElementById('infoManuf').textContent = info.manufacturer  || '–';
   document.getElementById('infoModel').textContent = info.model         || '–';
   document.getElementById('infoImei').textContent  = info.imei          || '–';
-  document.getElementById('infoNet').textContent   = info.network_status || '–';
+  document.getElementById('infoNet').textContent      = info.network_status || '–';
+  document.getElementById('infoNetName').textContent  = info.network_name    || '–';
 }
 
 /* ─── Signal History Chart ───────────────────────────────────────────────── */
