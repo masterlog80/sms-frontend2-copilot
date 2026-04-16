@@ -88,6 +88,17 @@ event_log: list = []
 signal_history: list = []
 settings: dict = {"auto_delete_from_sim": False}
 
+# Delay (in seconds) before an SMS is deleted from SIM memory when
+# auto_delete_from_sim is enabled.  A 60-second window gives multipart
+# messages time to arrive and be reassembled before any parts are removed.
+AUTO_DELETE_DELAY = 60
+# Queue of (delete_at_timestamp, sim_index) pairs awaiting SIM deletion.
+_pending_sim_deletions: list = []
+# SIM indices that have already been queued, so they are not re-scheduled
+# on every poll cycle while they are still sitting on the SIM.
+_scheduled_sim_indices: set = set()
+_pending_sim_deletions_lock = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Data persistence helpers
 # ---------------------------------------------------------------------------
@@ -357,6 +368,47 @@ def _merge_sms(new_messages: list):
     return added
 
 
+def _schedule_sim_deletions(messages: list) -> None:
+    """Queue SIM indices from *messages* for deletion after AUTO_DELETE_DELAY seconds.
+
+    Each unique index is scheduled only once; subsequent polls that still see
+    the same message on the SIM will not extend or duplicate the timer.
+    """
+    delete_at = time.time() + AUTO_DELETE_DELAY
+    with _pending_sim_deletions_lock:
+        for msg in messages:
+            idx = msg.get("index")
+            if idx is not None and idx not in _scheduled_sim_indices:
+                _pending_sim_deletions.append((delete_at, idx))
+                _scheduled_sim_indices.add(idx)
+
+
+def _process_pending_sim_deletions() -> None:
+    """Delete SIM messages whose AUTO_DELETE_DELAY has elapsed."""
+    with _pending_sim_deletions_lock:
+        if not _pending_sim_deletions:
+            return
+        now = time.time()
+        to_delete: list = []
+        remaining: list = []
+        for delete_at, idx in _pending_sim_deletions:
+            if now >= delete_at:
+                to_delete.append(idx)
+            else:
+                remaining.append((delete_at, idx))
+        _pending_sim_deletions[:] = remaining
+        for idx in to_delete:
+            _scheduled_sim_indices.discard(idx)
+
+    if to_delete:
+        deleted_count = 0
+        for idx in to_delete:
+            if modem.delete_sms(idx):
+                deleted_count += 1
+        if deleted_count:
+            _append_log("INFO", f"Auto-deleted {deleted_count} SMS from SIM memory")
+
+
 def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
@@ -407,8 +459,8 @@ def _do_poll():
 
     signal = modem.get_signal_strength()
     memory = modem.get_memory()
-    new_sms = modem.list_sms()
-    new_sms = _combine_multipart_sms(new_sms)
+    raw_sms = modem.list_sms()
+    new_sms = _combine_multipart_sms(raw_sms)
 
     added = _merge_sms(new_sms)
     purged = _purge_multipart_fragments()
@@ -418,18 +470,13 @@ def _do_poll():
         _save_sms()
 
     # Auto-delete SMS from SIM memory if the setting is enabled.
-    # All messages returned by list_sms() have already been processed by
-    # _merge_sms(), so they are either newly stored or were already present
-    # in the application store. Deleting them frees SIM storage.
-    if settings.get("auto_delete_from_sim") and new_sms:
-        deleted_count = 0
-        for msg in new_sms:
-            idx = msg.get("index")
-            if idx is not None:
-                if modem.delete_sms(idx):
-                    deleted_count += 1
-        if deleted_count:
-            _append_log("INFO", f"Auto-deleted {deleted_count} SMS from SIM memory")
+    # Schedule raw (pre-combine) SIM entries for deletion after
+    # AUTO_DELETE_DELAY seconds.  This gives multipart messages enough
+    # time for all parts to arrive and be reassembled before any part
+    # is removed from the SIM.  Already-queued indices are not re-scheduled.
+    if settings.get("auto_delete_from_sim"):
+        _schedule_sim_deletions(raw_sms)
+    _process_pending_sim_deletions()
 
     with _state_lock:
         state["signal"] = signal
@@ -439,7 +486,7 @@ def _do_poll():
 
     _record_signal(signal, state["last_updated"])
 
-    logger.debug("Poll OK — signal=%s memory=%s sms_on_sim=%d", signal, memory, len(new_sms))
+    logger.debug("Poll OK — signal=%s memory=%s sms_on_sim=%d", signal, memory, len(raw_sms))
 
 
 def _record_signal(signal: dict, timestamp: str):
