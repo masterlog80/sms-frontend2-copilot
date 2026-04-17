@@ -108,6 +108,10 @@ settings: dict = {
     "email_subject": "New SMS received",
     "email_from": "",
     "email_to": "",
+    "gatewayapi_enabled": False,
+    "gatewayapi_token": "",
+    "gatewayapi_sender": "",
+    "gatewayapi_recipient": "",
     "raw_log_enabled": False,
 }
 
@@ -594,6 +598,70 @@ def _forward_to_email(msg: dict) -> None:
         _append_log("WARNING", f"Email forward error: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# GatewayAPI forwarding
+# ---------------------------------------------------------------------------
+
+_GATEWAYAPI_URL = "https://gatewayapi.com/rest/mtsms"
+
+
+def _forward_to_gatewayapi(msg: dict) -> None:
+    """Forward a single SMS message via GatewayAPI.
+
+    Uses the API token, sender ID, and recipient phone number stored in
+    *settings*.  Failures are logged but never propagated so they cannot
+    disrupt the polling loop.
+    """
+    token     = (settings.get("gatewayapi_token")     or "").strip()
+    sender    = (settings.get("gatewayapi_sender")    or "").strip()
+    recipient = (settings.get("gatewayapi_recipient") or "").strip()
+    if not token or not recipient:
+        logger.warning(
+            "GatewayAPI forwarding enabled but API token or recipient is not set"
+        )
+        return
+
+    sender_num = msg.get("sender") or "Unknown"
+    timestamp  = msg.get("timestamp") or ""
+    body       = msg.get("message") or ""
+    text       = f"New SMS received\nFrom: {sender_num}\nTime: {timestamp}\n\n{body}"
+
+    payload: dict = {
+        "message":    text,
+        "recipients": [{"msisdn": recipient}],
+    }
+    if sender:
+        payload["sender"] = sender
+
+    try:
+        resp = http_requests.post(
+            _GATEWAYAPI_URL,
+            json=payload,
+            headers={"Authorization": f"Token {token}"},
+            timeout=10,
+        )
+        if resp.ok:
+            logger.debug(
+                "Forwarded SMS from %s to %s via GatewayAPI", sender_num, recipient
+            )
+        else:
+            try:
+                data = resp.json()
+            except Exception:  # noqa: BLE001
+                data = {}
+            err_msg = data.get("message") or data.get("error") or resp.text
+            logger.warning(
+                "GatewayAPI returned %d: %s", resp.status_code, err_msg
+            )
+            _append_log(
+                "WARNING",
+                f"GatewayAPI forward failed ({resp.status_code}): {err_msg}",
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not forward SMS via GatewayAPI: %s", exc)
+        _append_log("WARNING", f"GatewayAPI forward error: {exc}")
+
+
 def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
@@ -659,6 +727,10 @@ def _do_poll():
         if settings.get("email_enabled"):
             for msg in sms_list[:added]:
                 _forward_to_email(msg)
+        # Forward newly added messages via GatewayAPI if the feature is enabled.
+        if settings.get("gatewayapi_enabled"):
+            for msg in sms_list[:added]:
+                _forward_to_gatewayapi(msg)
     if added or purged:
         _save_sms()
 
@@ -889,12 +961,13 @@ def api_update_settings():
     """
     bool_keys = {
         "auto_delete_from_sim", "telegram_enabled", "email_enabled",
-        "email_use_tls", "raw_log_enabled",
+        "email_use_tls", "raw_log_enabled", "gatewayapi_enabled",
     }
     str_keys  = {
         "telegram_bot_token", "telegram_chat_id",
         "email_username", "email_password", "email_smtp_host",
         "email_protocol", "email_subject", "email_from", "email_to",
+        "gatewayapi_token", "gatewayapi_sender", "gatewayapi_recipient",
     }
     int_keys  = {"email_smtp_port"}
     data = request.get_json(force=True) or {}
@@ -997,6 +1070,53 @@ def api_test_email():
     except Exception as exc:  # noqa: BLE001
         logger.warning("Email test failed: %s", exc)
         return jsonify({"success": False, "error": "Could not send email – check SMTP settings and server logs"}), 500
+
+
+@app.route("/api/settings/test_gatewayapi", methods=["POST"])
+def api_test_gatewayapi():
+    """Send a test SMS via GatewayAPI using the provided (or persisted) settings.
+
+    Returns ``{"success": true}`` on success, or an error description.
+    """
+    data = request.get_json(force=True) or {}
+
+    def _val(key):
+        return str(data.get(key) or settings.get(key) or "").strip()
+
+    token     = _val("gatewayapi_token")
+    sender    = _val("gatewayapi_sender")
+    recipient = _val("gatewayapi_recipient")
+
+    if not token or not recipient:
+        return jsonify(
+            {"success": False, "error": "API token and recipient phone number are required"}
+        ), 400
+
+    payload: dict = {
+        "message":    "\u2705 SMS Dashboard: GatewayAPI forwarding test successful!",
+        "recipients": [{"msisdn": recipient}],
+    }
+    if sender:
+        payload["sender"] = sender
+
+    try:
+        resp = http_requests.post(
+            _GATEWAYAPI_URL,
+            json=payload,
+            headers={"Authorization": f"Token {token}"},
+            timeout=10,
+        )
+        if resp.ok:
+            return jsonify({"success": True})
+        try:
+            body = resp.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        err_msg = body.get("message") or body.get("error") or resp.text
+        return jsonify({"success": False, "error": err_msg}), 400
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("GatewayAPI test request failed: %s", exc)
+        return jsonify({"success": False, "error": "Could not reach GatewayAPI"}), 500
 
 
 # ---------------------------------------------------------------------------

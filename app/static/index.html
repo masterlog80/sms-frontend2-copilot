@@ -489,6 +489,87 @@
         </div>
       </div>
 
+      <!-- GatewayAPI Forwarding -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-phone-fill me-2"></i>GatewayAPI SMS Forwarding</span>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Enable toggle -->
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <div class="fw-semibold">Forward received SMS via GatewayAPI</div>
+              <div class="text-muted small mt-1">
+                Automatically forward every incoming SMS to a phone number using
+                the <a href="https://gatewayapi.com" target="_blank" rel="noopener">GatewayAPI</a>
+                REST API. Enter your API token, an optional sender ID, and the
+                destination phone number below, then enable.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleGatewayapiEnabled" style="width:3em;height:1.5em">
+            </div>
+          </div>
+
+          <!-- API Token -->
+          <div class="mb-3">
+            <label for="inputGatewayapiToken" class="form-label fw-semibold small">
+              API Token
+            </label>
+            <input type="password" class="form-control font-monospace small"
+                   id="inputGatewayapiToken"
+                   placeholder="your-gatewayapi-token"
+                   autocomplete="off">
+            <div class="form-text">
+              Find your API token in the
+              <a href="https://gatewayapi.com/app/apikeys" target="_blank" rel="noopener">GatewayAPI dashboard</a>.
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <!-- Sender ID -->
+            <div class="col-sm-6">
+              <label for="inputGatewayapiSender" class="form-label fw-semibold small">
+                Sender ID <span class="text-muted fw-normal">(optional)</span>
+              </label>
+              <input type="text" class="form-control font-monospace small"
+                     id="inputGatewayapiSender"
+                     placeholder="MySender"
+                     autocomplete="off">
+              <div class="form-text">
+                Up to 11 alphanumeric characters or a phone number in E.164 format.
+                Leave blank to use the GatewayAPI default.
+              </div>
+            </div>
+            <!-- Destination Phone Number -->
+            <div class="col-sm-6">
+              <label for="inputGatewayapiRecipient" class="form-label fw-semibold small">
+                Destination Phone Number
+              </label>
+              <input type="text" class="form-control font-monospace small"
+                     id="inputGatewayapiRecipient"
+                     placeholder="4512345678"
+                     autocomplete="off">
+              <div class="form-text">
+                E.164 format without the leading <code>+</code>, e.g. <code>4512345678</code>.
+              </div>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="d-flex gap-2 flex-wrap">
+            <button id="btnSaveGatewayapi" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy me-1"></i>Save
+            </button>
+            <button id="btnTestGatewayapi" class="btn btn-sm btn-ghost">
+              <i class="bi bi-send me-1"></i>Send Test SMS
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Network Selection -->
       <div class="panel mb-3">
         <div class="panel-hdr">

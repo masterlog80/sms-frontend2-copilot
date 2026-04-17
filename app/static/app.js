@@ -707,6 +707,16 @@ async function fetchSettings() {
     const rawToggle = document.getElementById('toggleRawLogEnabled');
     if (rawToggle) rawToggle.checked = !!settings.raw_log_enabled;
     if (settings.raw_log_enabled) await refreshRawLogStats();
+
+    // GatewayAPI settings
+    const gwToggle    = document.getElementById('toggleGatewayapiEnabled');
+    const gwToken     = document.getElementById('inputGatewayapiToken');
+    const gwSender    = document.getElementById('inputGatewayapiSender');
+    const gwRecipient = document.getElementById('inputGatewayapiRecipient');
+    if (gwToggle)    gwToggle.checked  = !!settings.gatewayapi_enabled;
+    if (gwToken)     gwToken.value     = settings.gatewayapi_token     || '';
+    if (gwSender)    gwSender.value    = settings.gatewayapi_sender    || '';
+    if (gwRecipient) gwRecipient.value = settings.gatewayapi_recipient || '';
   } catch (err) { console.warn('fetchSettings error:', err); }
 }
 
@@ -858,6 +868,57 @@ async function testEmailSettings() {
 document.getElementById('btnSaveEmail').addEventListener('click', saveEmailSettings);
 document.getElementById('btnTestEmail').addEventListener('click', testEmailSettings);
 document.getElementById('toggleEmailEnabled').addEventListener('change', saveEmailSettings);
+
+/* ─── GatewayAPI forwarding settings ────────────────────────────────────── */
+async function saveGatewayapiSettings() {
+  const enabled   = document.getElementById('toggleGatewayapiEnabled').checked;
+  const token     = (document.getElementById('inputGatewayapiToken').value     || '').trim();
+  const sender    = (document.getElementById('inputGatewayapiSender').value    || '').trim();
+  const recipient = (document.getElementById('inputGatewayapiRecipient').value || '').trim();
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gatewayapi_enabled:   enabled,
+        gatewayapi_token:     token,
+        gatewayapi_sender:    sender,
+        gatewayapi_recipient: recipient,
+      }),
+    });
+    if (r.ok) {
+      showToast('GatewayAPI settings saved', 'success');
+    } else {
+      showToast('Failed to save GatewayAPI settings', 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+async function testGatewayapiSettings() {
+  const token     = (document.getElementById('inputGatewayapiToken').value     || '').trim();
+  const sender    = (document.getElementById('inputGatewayapiSender').value    || '').trim();
+  const recipient = (document.getElementById('inputGatewayapiRecipient').value || '').trim();
+  const btn       = document.getElementById('btnTestGatewayapi');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/settings/test_gatewayapi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gatewayapi_token: token, gatewayapi_sender: sender, gatewayapi_recipient: recipient }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.success) {
+      showToast('Test SMS sent! Check the destination phone.', 'success');
+    } else {
+      showToast('Test failed: ' + (data.error || r.statusText), 'danger');
+    }
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+  finally { btn.disabled = false; }
+}
+
+document.getElementById('btnSaveGatewayapi').addEventListener('click', saveGatewayapiSettings);
+document.getElementById('btnTestGatewayapi').addEventListener('click', testGatewayapiSettings);
+document.getElementById('toggleGatewayapiEnabled').addEventListener('change', saveGatewayapiSettings);
 
 /* ─── Raw Modem Log ──────────────────────────────────────────────────────── */
 async function saveRawLogSetting(enabled) {
