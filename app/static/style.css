@@ -674,3 +674,54 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ─── AT Console tab ────────────────────────────────────────────────────── */
+.at-console-container {
+  overflow-y: auto;
+  max-height: calc(100vh - 340px);
+  min-height: 200px;
+  background: var(--log-bg);
+}
+
+.at-cmd-entry {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0 0.75rem;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  transition: background var(--transition);
+}
+.at-cmd-entry:last-child  { border-bottom: none; }
+.at-cmd-entry:hover       { background: var(--surface-hover); }
+
+.at-cmd-ts {
+  color: var(--text-muted);
+  white-space: nowrap;
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  padding-top: 0.05rem;
+}
+
+.at-cmd-scope {
+  grid-column: 2;
+  color: var(--accent-light);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.at-cmd-command {
+  grid-column: 2;
+  color: var(--green);
+  word-break: break-all;
+}
+
+.at-cmd-response {
+  grid-column: 2;
+  color: var(--text-muted);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
