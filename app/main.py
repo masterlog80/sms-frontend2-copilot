@@ -707,6 +707,7 @@ def _do_poll():
         if not connected:
             with _state_lock:
                 state["modem_connected"] = False
+                state["signal"] = {"rssi": 99, "ber": 99, "dbm": None, "percent": 0, "quality": "Unknown"}
                 state["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             return
 

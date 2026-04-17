@@ -112,6 +112,7 @@ class ModemManager:
         """Send an AT command and return the raw response string."""
         if not self._serial or not self._serial.is_open:
             raise ModemError("Serial port not open")
+        self._serial.reset_input_buffer()
         raw = (command + "\r\n").encode()
         self._serial.write(raw)
         time.sleep(delay)
