@@ -131,6 +131,16 @@ _pending_sim_deletions: list = []
 _scheduled_sim_indices: set = set()
 _pending_sim_deletions_lock = threading.Lock()
 
+# Delay (in seconds) before a newly received SMS is forwarded to configured
+# destinations (Telegram, email, GatewayAPI).  The window lets all parts of a
+# multipart (concatenated) SMS arrive and be reassembled before the combined
+# text is dispatched, avoiding duplicate or truncated forwards.
+FORWARD_DELAY = int(os.environ.get("FORWARD_DELAY", "15"))
+# Pending forward queue: maps (sender, timestamp) -> (forward_at, msg).
+# Protected by its own lock so it is safe to access from the polling thread.
+_pending_forwards: dict = {}
+_pending_forwards_lock = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Data persistence helpers
 # ---------------------------------------------------------------------------
@@ -496,6 +506,39 @@ def _process_pending_sim_deletions() -> None:
             _append_log("INFO", f"Auto-deleted {deleted_count} SMS from SIM memory")
 
 
+def _schedule_forward(msg: dict) -> None:
+    """Schedule *msg* for forwarding after FORWARD_DELAY seconds.
+
+    If a message from the same (sender, timestamp) is already queued,
+    the entry is updated with the newer (more complete) version but the
+    original scheduled time is preserved.  This ensures that arriving parts
+    of a multipart SMS extend the combined text without resetting the clock,
+    so the final forward always carries the most complete text available.
+    """
+    key = (msg.get("sender"), msg.get("timestamp"))
+    with _pending_forwards_lock:
+        if key in _pending_forwards:
+            forward_at = _pending_forwards[key][0]
+            _pending_forwards[key] = (forward_at, msg)
+        else:
+            _pending_forwards[key] = (time.time() + FORWARD_DELAY, msg)
+
+
+def _process_pending_forwards() -> None:
+    """Forward messages whose FORWARD_DELAY has elapsed."""
+    now = time.time()
+    with _pending_forwards_lock:
+        done_keys = [k for k, (forward_at, _) in _pending_forwards.items() if now >= forward_at]
+        to_forward = [_pending_forwards.pop(key)[1] for key in done_keys]
+    for msg in to_forward:
+        if settings.get("telegram_enabled"):
+            _forward_to_telegram(msg)
+        if settings.get("email_enabled"):
+            _forward_to_email(msg)
+        if settings.get("gatewayapi_enabled"):
+            _forward_to_gatewayapi(msg)
+
+
 # ---------------------------------------------------------------------------
 # Telegram forwarding
 # ---------------------------------------------------------------------------
@@ -734,18 +777,11 @@ def _do_poll():
     purged = _purge_multipart_fragments()
     if added:
         _append_log("INFO", f"Received {added} new SMS message(s)")
-        # Forward newly added messages to Telegram if the feature is enabled.
-        if settings.get("telegram_enabled"):
-            for msg in sms_list[:added]:
-                _forward_to_telegram(msg)
-        # Forward newly added messages by email if the feature is enabled.
-        if settings.get("email_enabled"):
-            for msg in sms_list[:added]:
-                _forward_to_email(msg)
-        # Forward newly added messages via GatewayAPI if the feature is enabled.
-        if settings.get("gatewayapi_enabled"):
-            for msg in sms_list[:added]:
-                _forward_to_gatewayapi(msg)
+        # Schedule newly added messages for forwarding after a short delay so
+        # that all parts of a multipart SMS can arrive and be combined before
+        # the complete text is dispatched to Telegram / email / GatewayAPI.
+        for msg in sms_list[:added]:
+            _schedule_forward(msg)
     if added or purged:
         _save_sms()
 
@@ -757,6 +793,7 @@ def _do_poll():
     if settings.get("auto_delete_from_sim"):
         _schedule_sim_deletions(raw_sms)
     _process_pending_sim_deletions()
+    _process_pending_forwards()
 
     with _state_lock:
         state["signal"] = signal
