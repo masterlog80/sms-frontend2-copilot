@@ -35,6 +35,40 @@ class ModemManager:
         0x3C: '[',  0x3D: '~', 0x3E: ']', 0x40: '|', 0x65: '€',
     }
 
+    # Human-readable descriptions for common AT commands.  The lookup uses the
+    # longest matching prefix so that parametrised variants (e.g. AT+CMGD=3)
+    # resolve to the generic description.
+    _CMD_SCOPES: dict = {
+        "AT+COPS=?":    "Scan available networks",
+        "AT+COPS=0":    "Set automatic network selection",
+        "AT+COPS=1":    "Set manual network selection",
+        "AT+COPS=2":    "Deregister from network",
+        "AT+COPS?":     "Get current network operator",
+        "AT+CPMS=":     "Configure SMS memory storage",
+        "AT+CPMS?":     "Check SMS memory usage",
+        "AT+CMGF=0":    "Set SMS PDU mode",
+        "AT+CMGF=1":    "Set SMS text mode",
+        "AT+CMGL":      "List SMS messages",
+        "AT+CMGD=":     "Delete SMS from SIM",
+        "AT+CGMI":      "Get modem manufacturer",
+        "AT+CGMM":      "Get modem model",
+        "AT+CGSN":      "Get modem IMEI",
+        "AT+CREG?":     "Check network registration status",
+        "AT+CSQ":       "Check signal strength",
+        "ATE0":         "Disable command echo",
+        "AT":           "Check modem responsiveness",
+    }
+
+    @classmethod
+    def _cmd_scope(cls, command: str) -> str:
+        """Return a human-readable description for an AT command string."""
+        upper = command.strip().upper()
+        # Try longest prefix first so parametrised commands match specifically.
+        for prefix in sorted(cls._CMD_SCOPES, key=len, reverse=True):
+            if upper.startswith(prefix.upper()):
+                return cls._CMD_SCOPES[prefix]
+        return "AT command"
+
     def __init__(self, device="/dev/ttyUSB0", baudrate=115200, timeout=5):
         self.device = device
         self.baudrate = baudrate
@@ -43,7 +77,7 @@ class ModemManager:
         self._lock = threading.Lock()
         self.connected = False
         # Optional callback invoked after every AT command exchange.
-        # Signature: raw_log_callback(timestamp: str, command: str, response: str)
+        # Signature: raw_log_callback(timestamp: str, command: str, response: str, scope: str)
         self.raw_log_callback = None
 
     # ------------------------------------------------------------------
@@ -128,6 +162,7 @@ class ModemManager:
                     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
                     command,
                     decoded,
+                    self._cmd_scope(command),
                 )
             except Exception:  # noqa: BLE001
                 pass

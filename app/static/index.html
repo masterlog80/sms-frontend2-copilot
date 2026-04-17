@@ -173,6 +173,14 @@
       </button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="dash-tab-btn" id="tab-atconsole"
+              data-bs-toggle="tab" data-bs-target="#pane-atconsole"
+              type="button" role="tab">
+        <i class="bi bi-terminal-dash"></i>
+        <span>AT Console</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="dash-tab-btn" id="tab-network"
               data-bs-toggle="tab" data-bs-target="#pane-network"
               type="button" role="tab">
@@ -237,6 +245,24 @@
         </div>
       </div>
     </div><!-- /pane-signal -->
+
+    <!-- ── AT Console ───────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="pane-atconsole" role="tabpanel">
+      <div class="panel">
+        <div class="panel-hdr">
+          <span><i class="bi bi-terminal-dash me-2"></i>AT Console</span>
+          <button id="btnClearAtConsole" class="btn btn-sm btn-ghost d-flex align-items-center gap-1">
+            <i class="bi bi-x-circle"></i> Clear
+          </button>
+        </div>
+        <div id="atConsoleContainer" class="at-console-container panel-body-flush font-monospace small">
+          <div class="empty-state py-5" id="atConsoleEmpty">
+            <i class="bi bi-terminal-dash display-5"></i>
+            <p>Waiting for AT commands…</p>
+          </div>
+        </div>
+      </div>
+    </div><!-- /pane-atconsole -->
 
     <!-- ── Network Selection ────────────────────────────────────────── -->
     <div class="tab-pane fade" id="pane-network" role="tabpanel">

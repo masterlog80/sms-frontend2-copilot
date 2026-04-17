@@ -93,6 +93,11 @@ sms_list: list = []
 event_log: list = []
 signal_history: list = []
 raw_modem_log: list = []
+# Always-on in-memory rolling buffer for the AT Console tab.  Not persisted to
+# disk.  Populated regardless of the ``raw_log_enabled`` setting so the console
+# is always live.
+at_console_log: list = []
+MAX_AT_CONSOLE_ENTRIES = 200
 settings: dict = {
     "auto_delete_from_sim": False,
     "telegram_enabled": False,
@@ -253,22 +258,31 @@ def _append_log(level: str, message: str):
     _save_logs()
 
 
-def _on_raw_modem_cmd(timestamp: str, command: str, response: str) -> None:
+def _on_raw_modem_cmd(timestamp: str, command: str, response: str, scope: str) -> None:
     """Callback invoked by ModemManager._cmd() for every AT command exchange.
 
-    Appends an ``at_command`` entry to the in-memory raw modem log when raw
-    logging is enabled.  Disk persistence happens once per poll cycle in
+    Always appends an entry to the in-memory AT console log (``at_console_log``)
+    so that the AT Console tab is live regardless of the raw-logging setting.
+
+    Also appends to the persistent ``raw_modem_log`` when raw logging is enabled.
+    Disk persistence for raw_modem_log happens once per poll cycle in
     ``_do_poll()`` to avoid excessive I/O.
     """
-    if not settings.get("raw_log_enabled"):
-        return
     entry = {
         "type": "at_command",
         "timestamp": timestamp,
         "command": command,
         "response": response,
+        "scope": scope,
     }
-    # list.append() is thread-safe in CPython (GIL).  Trim excess entries.
+    # Always populate the AT console rolling buffer (in-memory only).
+    at_console_log.append(entry)
+    while len(at_console_log) > MAX_AT_CONSOLE_ENTRIES:
+        del at_console_log[0]
+
+    # Persistent raw log is gated behind the setting.
+    if not settings.get("raw_log_enabled"):
+        return
     raw_modem_log.append(entry)
     while len(raw_modem_log) > MAX_RAW_LOG_ENTRIES:
         del raw_modem_log[0]
@@ -1157,6 +1171,24 @@ def api_export_raw_log():
         mimetype="application/json",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+# ---------------------------------------------------------------------------
+# AT Console endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/api/at_console")
+def api_at_console():
+    """Return the in-memory AT console log (always active, not persisted)."""
+    return jsonify({"entries": list(at_console_log), "count": len(at_console_log)})
+
+
+@app.route("/api/at_console", methods=["DELETE"])
+def api_clear_at_console():
+    """Clear the in-memory AT console log."""
+    global at_console_log
+    at_console_log = []
+    return jsonify({"success": True})
 
 
 # ---------------------------------------------------------------------------

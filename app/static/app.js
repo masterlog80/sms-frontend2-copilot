@@ -480,7 +480,7 @@ async function fetchLogs() {
 }
 
 async function refreshAll() {
-  await Promise.all([fetchStatus(), fetchSms(), fetchLogs()]);
+  await Promise.all([fetchStatus(), fetchSms(), fetchLogs(), fetchAtConsole()]);
 }
 
 /* ─── Countdown & auto-refresh ───────────────────────────────────────────── */
@@ -991,6 +991,51 @@ document.getElementById('toggleRawLogEnabled').addEventListener('change', functi
 });
 document.getElementById('btnExportRawLog').addEventListener('click', exportRawLog);
 document.getElementById('btnClearRawLog').addEventListener('click', clearRawLog);
+
+/* ─── AT Console ─────────────────────────────────────────────────────────── */
+function atCmdEntryHtml(entry) {
+  const ts   = fmtTime(entry.timestamp);
+  const cmd  = escHtml(entry.command || '');
+  const resp = escHtml(entry.response || '');
+  const scope = escHtml(entry.scope || 'AT command');
+  return `<div class="at-cmd-entry">
+    <span class="at-cmd-ts">${ts}</span>
+    <span class="at-cmd-scope">${scope}</span>
+    <span class="at-cmd-command">&gt; ${cmd}</span>
+    <span class="at-cmd-response">${resp}</span>
+  </div>`;
+}
+
+function renderAtConsole(entries) {
+  const container = document.getElementById('atConsoleContainer');
+  if (!container) return;
+  if (!entries.length) {
+    container.innerHTML = `<div class="empty-state py-5" id="atConsoleEmpty">
+      <i class="bi bi-terminal-dash display-5"></i><p>Waiting for AT commands…</p></div>`;
+    return;
+  }
+  // Newest first
+  container.innerHTML = entries.slice().reverse().map(atCmdEntryHtml).join('');
+}
+
+async function fetchAtConsole() {
+  try {
+    const r = await fetch(`${API}/api/at_console`, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.statusText);
+    const { entries } = await r.json();
+    renderAtConsole(entries || []);
+  } catch (err) { console.warn('fetchAtConsole error:', err); }
+}
+
+async function clearAtConsole() {
+  try {
+    await fetch(`${API}/api/at_console`, { method: 'DELETE' });
+    renderAtConsole([]);
+    showToast('AT console cleared', 'info');
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+document.getElementById('btnClearAtConsole').addEventListener('click', clearAtConsole);
 
 /* ─── Bootstrap ──────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
