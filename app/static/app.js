@@ -319,7 +319,7 @@ function pushSignalPoint(signal, timestamp) {
 
 async function fetchSignalHistory() {
   try {
-    const r = await fetch(`${API}/api/signal_history`);
+    const r = await fetch(`${API}/api/signal_history`, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.statusText);
     const { history } = await r.json();
     _signalHistory = history || [];
