@@ -173,6 +173,14 @@
       </button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="dash-tab-btn" id="tab-network"
+              data-bs-toggle="tab" data-bs-target="#pane-network"
+              type="button" role="tab">
+        <i class="bi bi-broadcast"></i>
+        <span>Network Selection</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="dash-tab-btn" id="tab-log"
               data-bs-toggle="tab" data-bs-target="#pane-log"
               type="button" role="tab">
@@ -229,6 +237,42 @@
         </div>
       </div>
     </div><!-- /pane-signal -->
+
+    <!-- ── Network Selection ────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="pane-network" role="tabpanel">
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-broadcast me-2"></i>Network Selection</span>
+          <button id="btnScanNetworks" class="btn btn-sm btn-ghost d-flex align-items-center gap-1">
+            <i class="bi bi-search"></i> Scan Networks
+          </button>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Current network info -->
+          <div id="currentNetworkInfo" class="current-network-bar d-none">
+            <i class="bi bi-broadcast-pin text-accent me-1"></i>
+            <span class="text-muted small me-1">Current:</span>
+            <strong id="currentNetworkName">–</strong>
+            <span id="currentNetworkMode" class="network-mode-badge ms-2">auto</span>
+          </div>
+
+          <!-- Scan state messages -->
+          <div id="networkScanSpinner" class="empty-state py-4 d-none">
+            <div class="spinner-border spinner-border-sm text-accent me-2" role="status"></div>
+            <p class="mb-0">Scanning for networks… (up to 60 s)</p>
+          </div>
+          <div id="networkScanEmpty" class="empty-state py-4">
+            <i class="bi bi-broadcast display-5"></i>
+            <p>Press <strong>Scan Networks</strong> to detect available operators.</p>
+          </div>
+
+          <!-- Network list -->
+          <div id="networkList" class="network-list d-none"></div>
+
+        </div>
+      </div>
+    </div><!-- /pane-network -->
 
     <!-- ── Event Log ─────────────────────────────────────────────────── -->
     <div class="tab-pane fade" id="pane-log" role="tabpanel">
@@ -567,40 +611,6 @@
               <i class="bi bi-send me-1"></i>Send Test SMS
             </button>
           </div>
-        </div>
-      </div>
-
-      <!-- Network Selection -->
-      <div class="panel mb-3">
-        <div class="panel-hdr">
-          <span><i class="bi bi-broadcast me-2"></i>Network Selection</span>
-          <button id="btnScanNetworks" class="btn btn-sm btn-ghost d-flex align-items-center gap-1">
-            <i class="bi bi-search"></i> Scan Networks
-          </button>
-        </div>
-        <div class="panel-body p-3">
-
-          <!-- Current network info -->
-          <div id="currentNetworkInfo" class="current-network-bar d-none">
-            <i class="bi bi-broadcast-pin text-accent me-1"></i>
-            <span class="text-muted small me-1">Current:</span>
-            <strong id="currentNetworkName">–</strong>
-            <span id="currentNetworkMode" class="network-mode-badge ms-2">auto</span>
-          </div>
-
-          <!-- Scan state messages -->
-          <div id="networkScanSpinner" class="empty-state py-4 d-none">
-            <div class="spinner-border spinner-border-sm text-accent me-2" role="status"></div>
-            <p class="mb-0">Scanning for networks… (up to 60 s)</p>
-          </div>
-          <div id="networkScanEmpty" class="empty-state py-4">
-            <i class="bi bi-broadcast display-5"></i>
-            <p>Press <strong>Scan Networks</strong> to detect available operators.</p>
-          </div>
-
-          <!-- Network list -->
-          <div id="networkList" class="network-list d-none"></div>
-
         </div>
       </div>
 
