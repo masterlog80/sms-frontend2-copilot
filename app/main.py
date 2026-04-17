@@ -749,8 +749,9 @@ def _do_poll():
         state["memory"] = memory
         state["modem_connected"] = modem.connected
         state["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        _last_updated_ts = state["last_updated"]
 
-    _record_signal(signal, state["last_updated"])
+    _record_signal(signal, _last_updated_ts)
 
     # Append a decoded-SMS entry to the raw log when new messages arrived.
     if settings.get("raw_log_enabled") and added:
