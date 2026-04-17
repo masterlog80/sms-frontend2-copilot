@@ -135,7 +135,7 @@ _pending_sim_deletions_lock = threading.Lock()
 # destinations (Telegram, email, GatewayAPI).  The window lets all parts of a
 # multipart (concatenated) SMS arrive and be reassembled before the combined
 # text is dispatched, avoiding duplicate or truncated forwards.
-FORWARD_DELAY = int(os.environ.get("FORWARD_DELAY", "15"))
+FORWARD_DELAY = int(os.environ.get("FORWARD_DELAY", "30"))
 # Pending forward queue: maps (sender, timestamp) -> (forward_at, msg).
 # Protected by its own lock so it is safe to access from the polling thread.
 _pending_forwards: dict = {}

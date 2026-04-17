@@ -158,6 +158,7 @@ All settings are environment variables passed via `docker-compose.yml`:
 |---|---|---|
 | `MODEM_DEVICE` | `/dev/ttyUSB0` | Host device path mapped into the container |
 | `POLL_INTERVAL` | `5` | Seconds between each modem poll |
+| `FORWARD_DELAY` | `30` | Seconds to wait before forwarding an SMS (allows multipart messages to be combined) |
 | `DATA_DIR` | `/data` | Directory for persistent JSON files |
 | `LOG_LEVEL` | `INFO` | Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 

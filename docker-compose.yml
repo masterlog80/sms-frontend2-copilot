@@ -21,6 +21,7 @@ services:
       MODEM_DEVICE: /dev/ttyUSB2   # primary device (always tried first)
       #MODEM_DEVICES: /dev/ttyUSB0,/dev/ttyUSB1,/dev/ttyUSB2  # optional: override fallback order
       POLL_INTERVAL: 5             # seconds between modem polls
+      FORWARD_DELAY: 30            # seconds to wait before forwarding (allows multipart SMS to combine)
       DATA_DIR: /data              # persistent data directory (inside container)
       LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR
     healthcheck:
