@@ -455,7 +455,7 @@ async function clearLog() {
 /* ─── Data fetching ──────────────────────────────────────────────────────── */
 async function fetchStatus() {
   try {
-    const r = await fetch(`${API}/api/status`);
+    const r = await fetch(`${API}/api/status`, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.statusText);
     updateStatus(await r.json());
   } catch (err) { console.warn('fetchStatus error:', err); }
@@ -463,7 +463,7 @@ async function fetchStatus() {
 
 async function fetchSms() {
   try {
-    const r = await fetch(`${API}/api/sms`);
+    const r = await fetch(`${API}/api/sms`, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.statusText);
     const { sms } = await r.json();
     renderSms(sms || []);
@@ -472,7 +472,7 @@ async function fetchSms() {
 
 async function fetchLogs() {
   try {
-    const r = await fetch(`${API}/api/logs`);
+    const r = await fetch(`${API}/api/logs`, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.statusText);
     const { logs } = await r.json();
     renderLog(logs || []);
