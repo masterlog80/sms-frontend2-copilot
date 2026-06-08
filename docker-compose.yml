@@ -1,8 +1,8 @@
 services:
   modem-dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    #build:
+      #context: .
+      #dockerfile: Dockerfile
     image: modem-dashboard:latest
     container_name: modem-dashboard
     restart: unless-stopped
