@@ -124,7 +124,10 @@ function updateStatus(data) {
   }
 
   document.getElementById('deviceLabel').textContent  = data.device || '–';
-  document.getElementById('lastUpdated').textContent  = fmtTime(data.last_updated);
+
+  // Footer: last updated timestamp
+  const elLU = document.getElementById('footerLastUpdated');
+  if (elLU) elLU.textContent = data.last_updated ? 'Updated: ' + fmtTime(data.last_updated) : '–';
 
   // Signal
   const sig  = data.signal || {};
@@ -168,14 +171,13 @@ function updateStatus(data) {
   document.getElementById('infoNet').textContent      = info.network_status || '–';
   document.getElementById('infoNetName').textContent  = info.network_name    || '–';
 
-  // Image version (populated once from the first API response)
+  // Footer: image name + version (updated on every poll)
   if (data.image_name || data.image_version) {
-    const el = document.getElementById('imageVersion');
-    if (el && !el.dataset.set) {
+    const el = document.getElementById('footerImageVersion');
+    if (el) {
       const name = data.image_name    || 'sms-frontend2-copilot';
       const ver  = data.image_version || '?';
-      el.textContent = `${name}:${ver}`;
-      el.dataset.set = '1';
+      el.textContent = `Image: ${name}:${ver}`;
     }
   }
 }
@@ -1100,5 +1102,6 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchSettings();
   setInterval(tickCountdown, 1000);
 });
+
 
 
