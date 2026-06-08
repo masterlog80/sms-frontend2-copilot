@@ -105,6 +105,14 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 .brand-title { font-weight: 700; font-size: 1rem; line-height: 1.2; }
 .brand-sub   { font-size: 0.72rem; color: var(--text-muted); line-height: 1; }
 .brand-sub code { font-size: inherit; color: var(--accent-light); background: none; }
+.brand-image-ver {
+  margin-left: 0.5rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-family: var(--bs-font-monospace, monospace);
+  white-space: nowrap;
+}
 
 /* Header controls */
 .header-controls {
@@ -725,3 +733,4 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
   word-break: break-all;
   white-space: pre-wrap;
 }
+
