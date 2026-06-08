@@ -117,6 +117,9 @@ settings: dict = {
     "gatewayapi_token": "",
     "gatewayapi_sender": "",
     "gatewayapi_recipient": "",
+    "whatsapp_enabled": False,
+    "whatsapp_phone": "",
+    "whatsapp_api_key": "",
     "raw_log_enabled": False,
 }
 
@@ -132,7 +135,7 @@ _scheduled_sim_indices: set = set()
 _pending_sim_deletions_lock = threading.Lock()
 
 # Delay (in seconds) before a newly received SMS is forwarded to configured
-# destinations (Telegram, email, GatewayAPI).  The window lets all parts of a
+# destinations (Telegram, email, GatewayAPI, WhatsApp).  The window lets all parts of a
 # multipart (concatenated) SMS arrive and be reassembled before the combined
 # text is dispatched, avoiding duplicate or truncated forwards.
 FORWARD_DELAY = int(os.environ.get("FORWARD_DELAY", "30"))
@@ -537,6 +540,8 @@ def _process_pending_forwards() -> None:
             _forward_to_email(msg)
         if settings.get("gatewayapi_enabled"):
             _forward_to_gatewayapi(msg)
+        if settings.get("whatsapp_enabled"):
+            _forward_to_whatsapp(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -719,7 +724,49 @@ def _forward_to_gatewayapi(msg: dict) -> None:
         _append_log("WARNING", f"GatewayAPI forward error: {exc}")
 
 
-def _poll():
+# ---------------------------------------------------------------------------
+# WhatsApp forwarding (via CallMeBot free API)
+# ---------------------------------------------------------------------------
+
+_CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
+
+
+def _forward_to_whatsapp(msg: dict) -> None:
+    """Forward a single SMS message to WhatsApp via the CallMeBot free API.
+
+    Uses the phone number and API key stored in *settings*.  Failures are
+    logged but never propagated so they cannot disrupt the polling loop.
+    """
+    phone   = (settings.get("whatsapp_phone")   or "").strip()
+    api_key = (settings.get("whatsapp_api_key") or "").strip()
+    if not phone or not api_key:
+        logger.warning("WhatsApp forwarding enabled but phone or API key is not set")
+        return
+
+    sender    = msg.get("sender")    or "Unknown"
+    timestamp = msg.get("timestamp") or ""
+    body      = msg.get("message")   or ""
+    text = f"\U0001f4f1 New SMS received\nFrom: {sender}\nTime: {timestamp}\n\n{body}"
+
+    try:
+        resp = http_requests.get(
+            _CALLMEBOT_URL,
+            params={"phone": phone, "text": text, "apikey": api_key},
+            timeout=15,
+        )
+        if resp.ok:
+            logger.debug("Forwarded SMS from %s to WhatsApp %s", sender, phone)
+        else:
+            logger.warning(
+                "CallMeBot API returned %d: %s", resp.status_code, resp.text[:200]
+            )
+            _append_log(
+                "WARNING",
+                f"WhatsApp forward failed ({resp.status_code}): {resp.text[:200]}",
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not forward SMS to WhatsApp: %s", exc)
+        _append_log("WARNING", f"WhatsApp forward error: {exc}")
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
         "Polling thread started (interval=%ds, devices=%s)",
@@ -1015,12 +1062,14 @@ def api_update_settings():
     bool_keys = {
         "auto_delete_from_sim", "telegram_enabled", "email_enabled",
         "email_use_tls", "raw_log_enabled", "gatewayapi_enabled",
+        "whatsapp_enabled",
     }
     str_keys  = {
         "telegram_bot_token", "telegram_chat_id",
         "email_username", "email_password", "email_smtp_host",
         "email_protocol", "email_subject", "email_from", "email_to",
         "gatewayapi_token", "gatewayapi_sender", "gatewayapi_recipient",
+        "whatsapp_phone", "whatsapp_api_key",
     }
     int_keys  = {"email_smtp_port"}
     data = request.get_json(force=True) or {}
@@ -1172,6 +1221,39 @@ def api_test_gatewayapi():
         return jsonify({"success": False, "error": "Could not reach GatewayAPI"}), 500
 
 
+@app.route("/api/settings/test_whatsapp", methods=["POST"])
+def api_test_whatsapp():
+    """Send a test message to WhatsApp via CallMeBot.
+
+    Returns ``{"success": true}`` on success, or an error description.
+    Uses the phone/api_key from the request body if provided, falling back
+    to the persisted settings so the user can test before saving.
+    """
+    data    = request.get_json(force=True) or {}
+    phone   = str(data.get("whatsapp_phone")   or settings.get("whatsapp_phone")   or "").strip()
+    api_key = str(data.get("whatsapp_api_key") or settings.get("whatsapp_api_key") or "").strip()
+
+    if not phone or not api_key:
+        return jsonify(
+            {"success": False, "error": "Phone number and API key are required"}
+        ), 400
+
+    text = "\u2705 SMS Dashboard: WhatsApp forwarding test successful!"
+
+    try:
+        resp = http_requests.get(
+            _CALLMEBOT_URL,
+            params={"phone": phone, "text": text, "apikey": api_key},
+            timeout=15,
+        )
+        if resp.ok:
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": f"CallMeBot returned {resp.status_code}: {resp.text[:200]}"}), 400
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WhatsApp test request failed: %s", exc)
+        return jsonify({"success": False, "error": "Could not reach CallMeBot API"}), 500
+
+
 # ---------------------------------------------------------------------------
 # Raw modem log endpoints
 # ---------------------------------------------------------------------------
@@ -1244,3 +1326,4 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
