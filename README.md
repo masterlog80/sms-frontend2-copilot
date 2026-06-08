@@ -49,7 +49,7 @@ docker build -t modem-dashboard .
 docker compose -f docker-compose.yml up -d --remove-orphans
 
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
-docker tag rmodem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
+docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
 
 read -p "Push image zot.salvetti.info/modem-dashboard:${VERSION}? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION}
 ```
