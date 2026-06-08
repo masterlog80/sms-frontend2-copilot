@@ -38,9 +38,20 @@ A Dockerized web dashboard for USB stick SIM modems and compatible AT-command de
 git clone https://github.com/masterlog80/sms-frontend2-copilot.git
 cd sms-frontend2-copilot
 
+CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+sed -i.bak -E 's@(org\.opencontainers\.image\.created=")[^"]*"@\1'${CREATED}'"@' Dockerfile
+
 yes | docker image prune --all
+yes | docker builder prune --all
+
 docker build -t modem-dashboard .
 docker compose -f docker-compose.yml up -d --remove-orphans
+
+VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
+docker tag rmodem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
+
+read -p "Push image zot.salvetti.info/modem-dashboard:${VERSION}? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION}
 ```
 
 ### Access the UI
