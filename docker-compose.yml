@@ -14,6 +14,7 @@ services:
       - /dev/ttyUSB3:/dev/ttyUSB3
       - /dev/ttyUSB4:/dev/ttyUSB4
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # image auto-detection
       - modem_data:/data
     ports:
       - "5003:5000"
@@ -24,6 +25,10 @@ services:
       FORWARD_DELAY: 30            # seconds to wait before forwarding (allows multipart SMS to combine)
       DATA_DIR: /data              # persistent data directory (inside container)
       LOG_LEVEL: INFO              # DEBUG | INFO | WARNING | ERROR
+      # IMAGE_NAME and IMAGE_VERSION are auto-detected from the Docker
+      # socket mounted below — override here only if detection fails.
+      #IMAGE_NAME: modem-dashboard
+      #IMAGE_VERSION: latest
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/status')"]
@@ -35,3 +40,4 @@ services:
 volumes:
   modem_data:
     driver: local
+
