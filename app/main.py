@@ -894,6 +894,9 @@ def _forward_to_whatsapp(msg: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not forward SMS to WhatsApp: %s", exc)
         _append_log("WARNING", f"WhatsApp forward error: {exc}")
+
+
+def _poll():
     """Background thread: polls the modem every POLL_INTERVAL seconds."""
     logger.info(
         "Polling thread started (interval=%ds, devices=%s)",
@@ -1455,5 +1458,6 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 
 
