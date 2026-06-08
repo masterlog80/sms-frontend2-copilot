@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import smtplib
+import socket
+import ssl
 import threading
 import time
 from collections import defaultdict
@@ -22,6 +24,131 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from modem import ModemManager
+
+# ---------------------------------------------------------------------------
+# Image auto-detection (Docker socket or Kubernetes API)
+# ---------------------------------------------------------------------------
+
+def _docker_api_get(api_path: str) -> dict | None:
+    """Make a GET request to the Docker Unix socket; return parsed JSON or None."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(5)
+            sock.connect("/var/run/docker.sock")
+            sock.sendall(
+                f"GET {api_path} HTTP/1.0\r\nHost: localhost\r\n\r\n".encode()
+            )
+            buf = b""
+            while chunk := sock.recv(65536):
+                buf += chunk
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            return None
+        status = int(buf[:buf.find(b"\r\n")].decode().split(" ", 2)[1])
+        if status != 200:
+            logging.getLogger(__name__).warning("Docker API %s → HTTP %d", api_path, status)
+            return None
+        return json.loads(buf[sep + 4:].decode("utf-8", errors="replace"))
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Docker API %r failed: %s", api_path, exc)
+        return None
+
+
+def _detect_image_info() -> tuple[str, str]:
+    """Return (image_name, tag) via Docker socket or Kubernetes API."""
+    _fb_name = os.getenv("IMAGE_NAME",    "sms-frontend2-copilot")
+    _fb_ver  = os.getenv("IMAGE_VERSION", "unknown")
+
+    def _docker() -> tuple[str, str] | None:
+        try:
+            cid = os.environ.get("HOSTNAME", "").strip() or None
+            if not cid or len(cid) < 12:
+                try:
+                    with open("/proc/self/cgroup") as fh:
+                        for line in fh:
+                            parts = line.strip().split("/")
+                            for i, p in enumerate(parts):
+                                if p == "docker" and i + 1 < len(parts) and len(parts[i+1]) >= 12:
+                                    cid = parts[i + 1][:64]; break
+                                if p.startswith("docker-") and p.endswith(".scope"):
+                                    cid = p[7:-6]; break
+                            if cid: break
+                except OSError:
+                    pass
+            if not cid or not os.path.exists("/var/run/docker.sock"):
+                return None
+            data = _docker_api_get(f"/containers/{cid}/json")
+            if not data:
+                return None
+            raw  = data.get("Config", {}).get("Image", "") or ""
+            name = raw.split(":")[0] if raw else None
+            tag  = raw.split(":")[-1] if ":" in raw else None
+            if not tag:
+                img = _docker_api_get(f"/images/{data.get('Image','')}/json")
+                if img:
+                    tags = img.get("RepoTags") or []
+                    m = next((t for t in tags if t.startswith((name or "") + ":")),
+                             tags[0] if tags else None)
+                    if m and ":" in m:
+                        tag = m.split(":")[-1]
+            if name:
+                logging.getLogger(__name__).info("Image via Docker socket: %s:%s", name, tag)
+                return name, tag or _fb_ver
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Docker image detection failed: %s", exc)
+        return None
+
+    def _k8s() -> tuple[str, str] | None:
+        try:
+            sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+            tp, np, cp = map(lambda f: os.path.join(sa, f), ("token", "namespace", "ca.crt"))
+            if not os.path.exists(tp):
+                return None
+            with open(tp) as f: token = f.read().strip()
+            with open(np) as f: ns    = f.read().strip()
+            pod = os.environ.get("HOSTNAME", "")
+            if not pod:
+                return None
+            kh = os.environ.get("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+            kp = int(os.environ.get("KUBERNETES_SERVICE_PORT", "443"))
+            ctx = ssl.create_default_context(cafile=cp)
+            tls = ctx.wrap_socket(socket.create_connection((kh, kp), timeout=5),
+                                  server_hostname=kh)
+            tls.sendall((
+                f"GET /api/v1/namespaces/{ns}/pods/{pod} HTTP/1.0\r\n"
+                f"Host: {kh}\r\nAuthorization: Bearer {token}\r\n"
+                f"Accept: application/json\r\n\r\n"
+            ).encode())
+            buf = b""
+            while chunk := tls.recv(65536):
+                buf += chunk
+            tls.close()
+            sep = buf.find(b"\r\n\r\n")
+            if sep == -1: return None
+            status = int(buf[:buf.find(b"\r\n")].decode(errors="replace").split()[1])
+            if status == 403:
+                logging.getLogger(__name__).warning(
+                    "k8s 403 for pod %s/%s — add Role 'get pods'", ns, pod)
+                return None
+            if status != 200: return None
+            p = json.loads(buf[sep+4:].decode("utf-8", errors="replace"))
+            cs = p.get("status", {}).get("containerStatuses", []) or \
+                 p.get("spec",   {}).get("containers", [])
+            raw   = cs[0].get("image", "") if cs else ""
+            short = raw.split("/")[-1]
+            name  = short.split(":")[0]
+            tag   = short.split(":")[-1] if ":" in short else None
+            logging.getLogger(__name__).info(
+                "Image via k8s API: %s:%s (pod %s/%s)", name, tag, ns, pod)
+            return name or None, tag or _fb_ver
+        except Exception:
+            pass
+        return None
+
+    return _docker() or _k8s() or (_fb_name, _fb_ver)
+
+
+IMAGE_NAME, IMAGE_VERSION = _detect_image_info()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -916,6 +1043,8 @@ def api_status():
             "device": modem.device,
             "devices": MODEM_DEVICES,
             "poll_interval": POLL_INTERVAL,
+            "image_name":    IMAGE_NAME,
+            "image_version": IMAGE_VERSION,
         })
 
 
@@ -1326,4 +1455,5 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 

@@ -1,0 +1,138 @@
+# =============================================================================
+# sms-frontend2-copilot — k3s / Kubernetes deployment
+# =============================================================================
+#
+# RBAC note
+# ---------
+# The app queries the k8s API at startup to auto-detect its image name and
+# version.  The Role below grants the minimum required permission (get pods).
+#
+# Usage:
+#   kubectl apply -f k3s-deploy.yaml
+# =============================================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sms-dashboard
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sms-dashboard-sa
+  namespace: sms-dashboard
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sms-dashboard-pod-reader
+  namespace: sms-dashboard
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sms-dashboard-pod-reader
+  namespace: sms-dashboard
+subjects:
+  - kind: ServiceAccount
+    name: sms-dashboard-sa
+    namespace: sms-dashboard
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: sms-dashboard-pod-reader
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sms-dashboard-data
+  namespace: sms-dashboard
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sms-dashboard
+  namespace: sms-dashboard
+  labels:
+    app: sms-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sms-dashboard
+  template:
+    metadata:
+      labels:
+        app: sms-dashboard
+    spec:
+      serviceAccountName: sms-dashboard-sa
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: sms-dashboard-data
+      containers:
+        - name: sms-dashboard
+          image: modem-dashboard:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          env:
+            - name: MODEM_DEVICE
+              value: "/dev/ttyUSB2"
+            - name: POLL_INTERVAL
+              value: "5"
+            - name: FORWARD_DELAY
+              value: "30"
+            - name: DATA_DIR
+              value: "/data"
+            - name: LOG_LEVEL
+              value: "INFO"
+            # IMAGE_NAME / IMAGE_VERSION auto-detected from k8s API via RBAC above
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          securityContext:
+            privileged: true       # required for USB modem device access
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          livenessProbe:
+            httpGet: { path: /api/status, port: 5000 }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /api/status, port: 5000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sms-dashboard
+  namespace: sms-dashboard
+spec:
+  selector:
+    app: sms-dashboard
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+  type: ClusterIP
