@@ -32,7 +32,6 @@
         <div class="brand-title">USB Modem Dashboard</div>
         <div class="brand-sub">
           <code id="deviceLabel">–</code>
-          <span id="imageVersion" class="brand-image-ver"></span>
         </div>
       </div>
     </div>
@@ -64,11 +63,6 @@
       <button id="btnTheme" class="icon-btn" title="Toggle theme">
         <i class="bi bi-moon-stars-fill"></i>
       </button>
-
-      <!-- Last updated -->
-      <div class="last-updated text-secondary small d-none d-lg-block">
-        Updated <span id="lastUpdated">–</span>
-      </div>
     </div>
   </div>
 </header>
@@ -754,6 +748,13 @@
   </div><!-- /tab-content -->
 </div><!-- /main-content -->
 
+<!-- Footer -->
+<footer class="footer">
+  <span>USB Modem Dashboard &copy; 2026 &mdash; SMS &amp; modem monitor</span>
+  <span id="footerLastUpdated">–</span>
+  <span id="footerImageVersion" class="footer-version"></span>
+</footer>
+
 <!-- Toast notifications -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastArea"></div>
 
@@ -761,5 +762,6 @@
 <script src="app.js"></script>
 </body>
 </html>
+
 
 
