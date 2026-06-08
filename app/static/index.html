@@ -640,6 +640,72 @@
         </div>
       </div>
 
+      <!-- WhatsApp Forwarding -->
+      <div class="panel mb-3">
+        <div class="panel-hdr">
+          <span><i class="bi bi-whatsapp me-2"></i>WhatsApp Forwarding</span>
+        </div>
+        <div class="panel-body p-3">
+
+          <!-- Enable toggle -->
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <div class="fw-semibold">Forward received SMS to WhatsApp</div>
+              <div class="text-muted small mt-1">
+                Automatically send every incoming SMS to a WhatsApp number via the
+                <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a>
+                free API. Register your number with CallMeBot first to obtain an API key, then configure below.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-4 mb-0 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     id="toggleWhatsappEnabled" style="width:3em;height:1.5em">
+            </div>
+          </div>
+
+          <!-- Phone number -->
+          <div class="mb-3">
+            <label for="inputWhatsappPhone" class="form-label fw-semibold small">
+              WhatsApp Phone Number
+            </label>
+            <input type="text" class="form-control font-monospace small"
+                   id="inputWhatsappPhone"
+                   placeholder="+819012345678"
+                   autocomplete="off">
+            <div class="form-text">
+              Your WhatsApp number in international format, e.g. <code>+819012345678</code>.
+              This must be the number you registered with CallMeBot.
+            </div>
+          </div>
+
+          <!-- API key -->
+          <div class="mb-3">
+            <label for="inputWhatsappApiKey" class="form-label fw-semibold small">
+              CallMeBot API Key
+            </label>
+            <input type="password" class="form-control font-monospace small"
+                   id="inputWhatsappApiKey"
+                   placeholder="1234567"
+                   autocomplete="off">
+            <div class="form-text">
+              Send <code>I allow callmebot to send me messages</code> to
+              <a href="https://wa.me/34644597787" target="_blank" rel="noopener">+34 644 59 77 87</a>
+              on WhatsApp to receive your free API key.
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="d-flex gap-2 flex-wrap">
+            <button id="btnSaveWhatsapp" class="btn btn-sm btn-primary">
+              <i class="bi bi-floppy me-1"></i>Save
+            </button>
+            <button id="btnTestWhatsapp" class="btn btn-sm btn-ghost">
+              <i class="bi bi-send me-1"></i>Send Test Message
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Raw Modem Log -->
       <div class="panel mb-3">
         <div class="panel-hdr">
@@ -694,3 +760,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+
