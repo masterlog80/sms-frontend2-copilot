@@ -717,6 +717,14 @@ async function fetchSettings() {
     if (gwToken)     gwToken.value     = settings.gatewayapi_token     || '';
     if (gwSender)    gwSender.value    = settings.gatewayapi_sender    || '';
     if (gwRecipient) gwRecipient.value = settings.gatewayapi_recipient || '';
+
+    // WhatsApp settings
+    const waToggle = document.getElementById('toggleWhatsappEnabled');
+    const waPhone  = document.getElementById('inputWhatsappPhone');
+    const waKey    = document.getElementById('inputWhatsappApiKey');
+    if (waToggle) waToggle.checked = !!settings.whatsapp_enabled;
+    if (waPhone)  waPhone.value    = settings.whatsapp_phone   || '';
+    if (waKey)    waKey.value      = settings.whatsapp_api_key || '';
   } catch (err) { console.warn('fetchSettings error:', err); }
 }
 
@@ -920,7 +928,43 @@ document.getElementById('btnSaveGatewayapi').addEventListener('click', saveGatew
 document.getElementById('btnTestGatewayapi').addEventListener('click', testGatewayapiSettings);
 document.getElementById('toggleGatewayapiEnabled').addEventListener('change', saveGatewayapiSettings);
 
-/* ─── Raw Modem Log ──────────────────────────────────────────────────────── */
+/* ─── WhatsApp forwarding settings ──────────────────────────────────────── */
+async function saveWhatsappSettings() {
+  const enabled = document.getElementById('toggleWhatsappEnabled').checked;
+  const phone   = (document.getElementById('inputWhatsappPhone').value  || '').trim();
+  const apiKey  = (document.getElementById('inputWhatsappApiKey').value || '').trim();
+  try {
+    const r = await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ whatsapp_enabled: enabled, whatsapp_phone: phone, whatsapp_api_key: apiKey }),
+    });
+    if (r.ok) showToast('WhatsApp settings saved', 'success');
+    else      showToast('Failed to save WhatsApp settings', 'danger');
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+}
+
+async function testWhatsappSettings() {
+  const phone  = (document.getElementById('inputWhatsappPhone').value  || '').trim();
+  const apiKey = (document.getElementById('inputWhatsappApiKey').value || '').trim();
+  const btn    = document.getElementById('btnTestWhatsapp');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/settings/test_whatsapp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ whatsapp_phone: phone, whatsapp_api_key: apiKey }),
+    });
+    const data = await r.json();
+    if (r.ok && data.success) showToast('Test message sent! Check your WhatsApp.', 'success');
+    else showToast('WhatsApp test failed: ' + (data.error || 'unknown error'), 'danger');
+  } catch (err) { showToast('Network error: ' + err.message, 'danger'); }
+  finally { btn.disabled = false; }
+}
+
+document.getElementById('btnSaveWhatsapp').addEventListener('click', saveWhatsappSettings);
+document.getElementById('btnTestWhatsapp').addEventListener('click', testWhatsappSettings);
+document.getElementById('toggleWhatsappEnabled').addEventListener('change', saveWhatsappSettings);
 async function saveRawLogSetting(enabled) {
   try {
     const r = await fetch(`${API}/api/settings`, {
@@ -1045,3 +1089,4 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchSettings();
   setInterval(tickCountdown, 1000);
 });
+
