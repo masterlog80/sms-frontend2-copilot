@@ -9,7 +9,7 @@ LABEL org.opencontainers.image.title="USB Modem Dashboard" \
       org.opencontainers.image.authors="Lorenzo (via Github Copilot/Claude)" \
       org.opencontainers.image.vendor="Lorenzo (via Github Copilot/Claude)" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="1.3" \
+      org.opencontainers.image.version="1.4" \
       org.opencontainers.image.created="2026-05-31T07:50:00Z"
 
 WORKDIR /install
