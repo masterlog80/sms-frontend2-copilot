@@ -167,6 +167,17 @@ function updateStatus(data) {
   document.getElementById('infoImei').textContent  = info.imei          || '–';
   document.getElementById('infoNet').textContent      = info.network_status || '–';
   document.getElementById('infoNetName').textContent  = info.network_name    || '–';
+
+  // Image version (populated once from the first API response)
+  if (data.image_name || data.image_version) {
+    const el = document.getElementById('imageVersion');
+    if (el && !el.dataset.set) {
+      const name = data.image_name    || 'sms-frontend2-copilot';
+      const ver  = data.image_version || '?';
+      el.textContent = `${name}:${ver}`;
+      el.dataset.set = '1';
+    }
+  }
 }
 
 /* ─── Signal History Chart ───────────────────────────────────────────────── */
@@ -1089,4 +1100,5 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchSettings();
   setInterval(tickCountdown, 1000);
 });
+
 
