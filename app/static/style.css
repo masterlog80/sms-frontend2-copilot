@@ -70,6 +70,12 @@ html, body {
   overflow-x: hidden;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
 
 /* ─── Header ────────────────────────────────────────────────────────────── */
@@ -337,9 +343,11 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
 
 /* ─── Main content / tabs ───────────────────────────────────────────────── */
 .main-content {
+  flex: 1;
   max-width: 1600px;
   margin: 0 auto;
   padding: 0 1.25rem 2rem;
+  width: 100%;
 }
 
 /* Tab nav bar */
@@ -744,5 +752,6 @@ code, .font-monospace { font-family: "SFMono-Regular", Consolas, "Liberation Mon
   opacity: .7;
   font-family: var(--bs-font-monospace, monospace);
 }
+
 
 
