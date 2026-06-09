@@ -7,6 +7,7 @@ the static frontend files.
 Persistent data (SMS history, event log) is written to /data which should
 be mapped to a Docker volume.
 """
+import atexit
 import json
 import logging
 import os
@@ -232,6 +233,10 @@ MAX_LOG_ENTRIES = 500
 MAX_SIGNAL_HISTORY = 17280
 # Maximum number of raw modem log entries kept in memory and on disk.
 MAX_RAW_LOG_ENTRIES = 2000
+# Write signal_history.json at most once every N polls to avoid excessive
+# copy-on-write block churn on Longhorn (or any thin-provisioned volume).
+# At POLL_INTERVAL=5 s, 60 polls = 5 minutes between flushes.
+SIGNAL_HISTORY_FLUSH_INTERVAL = 60
 # Minimum shared-prefix length (in characters) required to classify a
 # shorter message as a garbled fragment of a longer one.  Candidates
 # shorter than 2 × this value are not considered (avoids false positives
@@ -268,6 +273,7 @@ sms_list: list = []
 event_log: list = []
 signal_history: list = []
 raw_modem_log: list = []
+_signal_history_poll_count: int = 0   # counts polls; flush to disk every SIGNAL_HISTORY_FLUSH_INTERVAL
 # Always-on in-memory rolling buffer for the AT Console tab.  Not persisted to
 # disk.  Populated regardless of the ``raw_log_enabled`` setting so the console
 # is always live.
@@ -1058,7 +1064,13 @@ def _do_poll():
 
 
 def _record_signal(signal: dict, timestamp: str):
-    """Append one reading to the in-memory signal history and persist it."""
+    """Append one reading to the in-memory signal history and persist it.
+
+    The in-memory list is updated on every call.  The on-disk file is written
+    only every SIGNAL_HISTORY_FLUSH_INTERVAL polls to avoid flooding a
+    thin-provisioned volume (e.g. Longhorn) with copy-on-write block writes.
+    """
+    global _signal_history_poll_count
     entry = {
         "timestamp": timestamp,
         "percent": signal.get("percent", 0),
@@ -1070,7 +1082,10 @@ def _record_signal(signal: dict, timestamp: str):
         signal_history.append(entry)
         if len(signal_history) > MAX_SIGNAL_HISTORY:
             signal_history.pop(0)
-    _save_signal_history()
+    _signal_history_poll_count += 1
+    if _signal_history_poll_count >= SIGNAL_HISTORY_FLUSH_INTERVAL:
+        _signal_history_poll_count = 0
+        _save_signal_history()
 
 
 # ---------------------------------------------------------------------------
@@ -1500,12 +1515,16 @@ def create_app():
     _append_log("INFO", "Dashboard started")
     t = threading.Thread(target=_poll, daemon=True)
     t.start()
+    # Ensure the latest signal history is written on clean shutdown even if the
+    # flush interval hasn't been reached yet.
+    atexit.register(_save_signal_history)
     return app
 
 
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 
 
 
