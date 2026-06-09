@@ -1,0 +1,36 @@
+# Apply this to fix the 403 on an already-running pod in the default namespace:
+#   kubectl apply -f rbac-default.yaml
+# Then restart the pod:
+#   kubectl rollout restart deployment/modem-dashboard
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sms-dashboard-sa
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sms-dashboard-pod-reader
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sms-dashboard-pod-reader
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: sms-dashboard-sa
+    namespace: default
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: sms-dashboard-pod-reader
