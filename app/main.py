@@ -128,7 +128,9 @@ def _detect_image_info() -> tuple[str, str]:
             status = int(buf[:buf.find(b"\r\n")].decode(errors="replace").split()[1])
             if status == 403:
                 logging.getLogger(__name__).warning(
-                    "k8s 403 for pod %s/%s — add Role 'get pods'", ns, pod)
+                    "k8s 403 for pod %s/%s — apply rbac-default.yaml and set "
+                    "serviceAccountName: sms-dashboard-sa in the Deployment "
+                    "(namespace must match: %s)", ns, pod, ns)
                 return None
             if status != 200: return None
             p = json.loads(buf[sep+4:].decode("utf-8", errors="replace"))
@@ -1488,6 +1490,7 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 
 
 
