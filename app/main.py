@@ -181,6 +181,22 @@ def _detect_image_info() -> tuple[str, str]:
 
 
 IMAGE_NAME, IMAGE_VERSION = _detect_image_info()
+_image_detection_done = IMAGE_VERSION != "unknown"
+
+
+def _get_image_info() -> tuple[str, str]:
+    """Return (IMAGE_NAME, IMAGE_VERSION), retrying detection if still unknown.
+
+    Called on every /api/status request so a pod that started before RBAC was
+    applied will self-correct on the next request without needing a restart.
+    """
+    global IMAGE_NAME, IMAGE_VERSION, _image_detection_done
+    if not _image_detection_done:
+        name, ver = _detect_image_info()
+        if ver != "unknown":
+            IMAGE_NAME, IMAGE_VERSION = name, ver
+            _image_detection_done = True
+    return IMAGE_NAME, IMAGE_VERSION
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1078,8 +1094,8 @@ def api_status():
             "device": modem.device,
             "devices": MODEM_DEVICES,
             "poll_interval": POLL_INTERVAL,
-            "image_name":    IMAGE_NAME,
-            "image_version": IMAGE_VERSION,
+            "image_name":    _get_image_info()[0],
+            "image_version": _get_image_info()[1],
         })
 
 
@@ -1490,6 +1506,7 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 
 
 
