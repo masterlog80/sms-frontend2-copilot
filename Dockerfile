@@ -1,6 +1,13 @@
 # ── Build stage (install Python deps) ──────────────────────────────────────
 FROM python:3.12-slim AS builder
 
+WORKDIR /install
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install/pkg -r requirements.txt
+
+# ── Runtime stage ──────────────────────────────────────────────────────────
+FROM python:3.12-slim
+
 LABEL org.opencontainers.image.title="USB Modem Dashboard" \
       org.opencontainers.image.description="A Dockerised web dashboard for the USB STICK SIM Modem (and compatible AT-command modems)." \
       org.opencontainers.image.source="https://github.com/masterlog80/sms-frontend2-copilot" \
@@ -11,16 +18,6 @@ LABEL org.opencontainers.image.title="USB Modem Dashboard" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="1.7" \
       org.opencontainers.image.created="2026-05-31T07:50:00Z"
-
-WORKDIR /install
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install/pkg -r requirements.txt
-
-# ── Runtime stage ──────────────────────────────────────────────────────────
-FROM python:3.12-slim
-
-LABEL maintainer="USB Modem Dashboard"
-LABEL description="HSDPA USB modem dashboard: signal strength, SMS inbox, memory usage"
 
 # Serial-port utilities
 RUN apt-get update && \
