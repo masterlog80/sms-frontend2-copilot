@@ -4,32 +4,34 @@
 #
 # RBAC note
 # ---------
-# The app queries the k8s API at startup to auto-detect its image name and
-# version.  The Role below grants the minimum required permission (get pods).
+# The app queries the Kubernetes API at startup to auto-detect its image name
+# and version.  The Role below grants the minimum required permission (get pods)
+# in the DEFAULT namespace, which is where the pod actually runs when deployed
+# via Portainer or a plain kubectl apply without a custom namespace.
 #
-# Usage:
+# If you deploy into a different namespace, change every occurrence of
+# "namespace: default" below to match.
+#
+# Quick-apply RBAC only (without redeploying):
+#   kubectl apply -f rbac-default.yaml
+#
+# Full deploy:
 #   kubectl apply -f k3s-deploy.yaml
 # =============================================================================
-
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: sms-dashboard
 
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: sms-dashboard-sa
-  namespace: sms-dashboard
+  namespace: default
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: sms-dashboard-pod-reader
-  namespace: sms-dashboard
+  namespace: default
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -40,11 +42,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: sms-dashboard-pod-reader
-  namespace: sms-dashboard
+  namespace: default
 subjects:
   - kind: ServiceAccount
     name: sms-dashboard-sa
-    namespace: sms-dashboard
+    namespace: default
 roleRef:
   kind: Role
   apiGroup: rbac.authorization.k8s.io
@@ -55,7 +57,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: sms-dashboard-data
-  namespace: sms-dashboard
+  namespace: default
 spec:
   accessModes:
     - ReadWriteOnce
@@ -67,19 +69,19 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sms-dashboard
-  namespace: sms-dashboard
+  name: modem-dashboard
+  namespace: default
   labels:
-    app: sms-dashboard
+    app: modem-dashboard
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sms-dashboard
+      app: modem-dashboard
   template:
     metadata:
       labels:
-        app: sms-dashboard
+        app: modem-dashboard
     spec:
       serviceAccountName: sms-dashboard-sa
       volumes:
@@ -126,11 +128,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sms-dashboard
-  namespace: sms-dashboard
+  name: modem-dashboard
+  namespace: default
 spec:
   selector:
-    app: sms-dashboard
+    app: modem-dashboard
   ports:
     - name: http
       port: 80
