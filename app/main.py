@@ -132,17 +132,47 @@ def _detect_image_info() -> tuple[str, str]:
                 return None
             if status != 200: return None
             p = json.loads(buf[sep+4:].decode("utf-8", errors="replace"))
-            cs = p.get("status", {}).get("containerStatuses", []) or \
-                 p.get("spec",   {}).get("containers", [])
-            raw   = cs[0].get("image", "") if cs else ""
+
+            # spec.containers always carries the image string as written in the
+            # manifest (e.g. "modem-dashboard:latest") — use it as the primary
+            # source for both name and tag.
+            spec_image = ""
+            spec_cs = p.get("spec", {}).get("containers", [])
+            if spec_cs:
+                spec_image = spec_cs[0].get("image", "") or ""
+
+            # containerStatuses carries the resolved image; its imageID may be a
+            # digest ("sha256:...") when the tag has been resolved, but the
+            # .image field still has the original tag string.
+            status_image = ""
+            status_cs = p.get("status", {}).get("containerStatuses", [])
+            if status_cs:
+                status_image = status_cs[0].get("image", "") or ""
+
+            # Pick the best raw string: prefer spec (always has the tag as
+            # written), fall back to the status image.
+            raw = spec_image or status_image
+            if not raw:
+                logging.getLogger(__name__).warning(
+                    "k8s: no image string found for pod %s/%s", ns, pod)
+                return None
+
+            # Strip registry prefix (everything before the last '/'), then split
+            # name and tag.  Works for bare names, names with a single registry
+            # prefix, and fully-qualified registry paths.
             short = raw.split("/")[-1]
             name  = short.split(":")[0]
             tag   = short.split(":")[-1] if ":" in short else None
+
+            # If the tag looks like a digest fragment, fall back to _fb_ver.
+            if tag and tag.startswith("sha256"):
+                tag = _fb_ver
+
             logging.getLogger(__name__).info(
-                "Image via k8s API: %s:%s (pod %s/%s)", name, tag, ns, pod)
+                "Image via k8s API: %s:%s (pod %s/%s, raw=%r)", name, tag, ns, pod, raw)
             return name or None, tag or _fb_ver
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).warning("k8s image detection failed: %s", exc)
         return None
 
     return _docker() or _k8s() or (_fb_name, _fb_ver)
@@ -1458,6 +1488,7 @@ def create_app():
 if __name__ == "__main__":
     create_app()
     app.run(host="0.0.0.0", port=5000, debug=False)
+
 
 
 
