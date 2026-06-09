@@ -52,6 +52,9 @@ VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*versi
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
 
 read -p "Push image zot.salvetti.info/modem-dashboard:${VERSION}? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION}
+
+yes | docker image prune --all
+yes | docker builder prune --all
 ```
 
 ### Access the UI
