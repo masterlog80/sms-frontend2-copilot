@@ -92,6 +92,35 @@ else
 fi
 cd sms-frontend2-copilot
 
+# --- Determine the image version to build: check the registry, suggest the next one ---
+REGISTRY="zot.salvetti.info"
+IMAGE_NAME="modem-dashboard"
+
+CURRENT_VERSION=$(curl -s "https://${REGISTRY}/v2/${IMAGE_NAME}/tags/list" 2>/dev/null \
+  | jq -r '.tags[]?' 2>/dev/null \
+  | grep -E '^[0-9]+\.[0-9]+$' \
+  | sort -t. -k1,1n -k2,2n \
+  | tail -1)
+
+if [[ -n "$CURRENT_VERSION" ]]; then
+  SUGGESTED_VERSION=$(awk -v v="$CURRENT_VERSION" 'BEGIN{printf "%.1f", v+0.1}')
+  echo "Newest image on ${REGISTRY}/${IMAGE_NAME}: ${CURRENT_VERSION}"
+  read -p "Use next version ${SUGGESTED_VERSION}? [Y/n]: " use_suggested
+  use_suggested="${use_suggested:-Y}"
+  if [[ "$use_suggested" =~ ^[Yy]$ ]]; then
+    NEW_VERSION="$SUGGESTED_VERSION"
+  else
+    read -p "Enter version to use: " NEW_VERSION
+  fi
+else
+  echo "Could not determine an existing version on ${REGISTRY}/${IMAGE_NAME} (unreachable, no jq, or no versioned tags) - keeping the version already set in the Dockerfile."
+fi
+
+if [[ -n "$NEW_VERSION" ]]; then
+  sed -i.bak -E "s|(org\.opencontainers\.image\.version=\")[^\"]*(\")|\1${NEW_VERSION}\2|" Dockerfile
+fi
+# --- End version selection ---
+
 CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 sed -i.bak -E 's@(org\.opencontainers\.image\.created=")[^"]*"@\1'${CREATED}'"@' Dockerfile
