@@ -104,8 +104,9 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
+docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:latest
 
-read -p "Push image zot.salvetti.info/modem-dashboard:${VERSION}? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION}
+read -p "Push images zot.salvetti.info/modem-dashboard:${VERSION} and zot.salvetti.info/modem-dashboard:latest? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION} && docker push zot.salvetti.info/modem-dashboard:latest
 
 yes | docker image prune --all
 yes | docker builder prune --all
