@@ -29,13 +29,67 @@ A Dockerized web dashboard for USB stick SIM modems and compatible AT-command de
 | Docker Compose ≥ 2.20 | `docker compose version` |
 | USB modem on `/dev/ttyUSB0` | Adjust `MODEM_DEVICE` if yours differs |
 | Host user in `dialout` group | `sudo usermod -aG dialout $USER` |
+| `curl` and `jq` | `jq` optional — pending PR check is skipped with a warning if missing |
 
 > **Tip – multiple ttyUSB ports:** HSDPA sticks often expose several serial interfaces. If AT commands don't work on `ttyUSB0`, try `ttyUSB1` or `ttyUSB2` via the `MODEM_DEVICE` environment variable.
 
 ### Clone & build
 
 ```bash
-git clone https://github.com/masterlog80/sms-frontend2-copilot.git
+# --- GitHub auth: reuse an existing token, only ask if none is present ---
+GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+if [[ -n "$GH_TOKEN" ]]; then
+  echo "Using existing GH_TOKEN/GITHUB_TOKEN from the environment."
+else
+  read -s -p "GitHub token (leave blank to use public access): " GH_TOKEN
+  echo
+fi
+
+REPO="masterlog80/sms-frontend2-copilot"
+AUTH_HEADER=()
+[[ -n "$GH_TOKEN" ]] && AUTH_HEADER=(-H "Authorization: token ${GH_TOKEN}")
+
+# --- Check for open, pending PR(s) not yet merged to main - any branch name - before cloning ---
+CLONE_REF=""
+if command -v jq &>/dev/null; then
+  PR_JSON=$(curl -s "${AUTH_HEADER[@]}" -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/pulls?state=open")
+
+  CANDIDATES=()
+  while IFS=$'\t' read -r pr_number pr_branch pr_title; do
+    [[ -z "$pr_number" ]] && continue
+    CANDIDATES+=("${pr_number}"$'\t'"${pr_branch}"$'\t'"${pr_title}")
+  done < <(echo "$PR_JSON" | jq -r '.[] | select(.draft == false) | [.number, .head.ref, .title] | @tsv')
+
+  if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
+    echo "Open pending PR(s) found (not yet merged to main):"
+    for i in "${!CANDIDATES[@]}"; do
+      IFS=$'\t' read -r num branch title <<< "${CANDIDATES[$i]}"
+      echo "  $((i+1))) #${num} ${title} (branch: ${branch})"
+    done
+    echo "  0) none - use main"
+    read -p "Which one should be pulled? [0-${#CANDIDATES[@]}, default 0]: " choice
+    choice="${choice:-0}"
+    if [[ "$choice" =~ ^[1-9][0-9]*$ ]] && (( choice <= ${#CANDIDATES[@]} )); then
+      IFS=$'\t' read -r _ CLONE_REF _ <<< "${CANDIDATES[$((choice-1))]}"
+    fi
+  fi
+else
+  echo "jq not found - skipping pending PR check."
+fi
+# --- End feature check ---
+
+CLONE_ARGS=()
+[[ -n "$CLONE_REF" ]] && CLONE_ARGS=(-b "$CLONE_REF")
+
+if [[ -n "$GH_TOKEN" ]]; then
+  # Auth header is passed via git config, not embedded in the URL, so it's
+  # never written to .git/config or left lying around on disk.
+  git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+    clone "${CLONE_ARGS[@]}" "https://github.com/masterlog80/sms-frontend2-copilot.git"
+else
+  git clone "${CLONE_ARGS[@]}" "https://github.com/masterlog80/sms-frontend2-copilot.git"
+fi
 cd sms-frontend2-copilot
 
 CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
