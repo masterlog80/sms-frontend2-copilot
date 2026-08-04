@@ -129,7 +129,30 @@ yes | docker image prune --all
 yes | docker builder prune --all
 
 docker build -t modem-dashboard .
-docker compose -f docker-compose.yml up -d --remove-orphans
+
+# --- Detect target system: Docker or K3S ---
+DEPLOY_TARGET=""
+if command -v k3s &>/dev/null || systemctl is-active --quiet k3s 2>/dev/null || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+  DEPLOY_TARGET="k3s"
+elif command -v docker &>/dev/null; then
+  DEPLOY_TARGET="docker"
+fi
+
+if [[ -z "$DEPLOY_TARGET" ]]; then
+  read -p "Could not auto-detect Docker or K3S. Deploy target: (d)ocker or (k)3s? [d/k]: " target_choice
+  [[ "$target_choice" =~ ^[Kk]$ ]] && DEPLOY_TARGET="k3s" || DEPLOY_TARGET="docker"
+else
+  echo "Detected deploy target: ${DEPLOY_TARGET}"
+fi
+# --- End target detection ---
+
+if [[ "$DEPLOY_TARGET" == "k3s" ]]; then
+  read -p "Deploy to K3S with 'kubectl apply -f k3s-deploy.yaml'? [Y/N] " deploy_answer
+  [[ "$deploy_answer" =~ ^[Yy]$ ]] && kubectl apply -f k3s-deploy.yaml
+else
+  read -p "Deploy with 'docker compose up -d'? [Y/N] " deploy_answer
+  [[ "$deploy_answer" =~ ^[Yy]$ ]] && docker compose -f docker-compose.yml up -d --remove-orphans
+fi
 
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
