@@ -36,12 +36,13 @@ A Dockerized web dashboard for USB stick SIM modems and compatible AT-command de
 ### Clone & build
 
 ```bash
-# --- GitHub auth: reuse an existing token, only ask if none is present ---
+echo ""
+echo ">> Step 1/9: GitHub authentication"
 GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
 if [[ -n "$GH_TOKEN" ]]; then
-  echo "Using existing GH_TOKEN/GITHUB_TOKEN from the environment."
+  echo "   Using existing GH_TOKEN/GITHUB_TOKEN from the environment."
 else
-  read -s -p "GitHub token (leave blank to use public access): " GH_TOKEN
+  read -s -p "   GitHub token (leave blank to use public access): " GH_TOKEN
   echo
 fi
 
@@ -49,7 +50,8 @@ REPO="masterlog80/sms-frontend2-copilot"
 AUTH_HEADER=()
 [[ -n "$GH_TOKEN" ]] && AUTH_HEADER=(-H "Authorization: token ${GH_TOKEN}")
 
-# --- Check for open, pending PR(s) not yet merged to main - any branch name - before cloning ---
+echo ""
+echo ">> Step 2/9: Checking for open pending pull requests"
 CLONE_REF=""
 if command -v jq &>/dev/null; then
   PR_JSON=$(curl -s "${AUTH_HEADER[@]}" -H "Accept: application/vnd.github+json" \
@@ -62,25 +64,29 @@ if command -v jq &>/dev/null; then
   done < <(echo "$PR_JSON" | jq -r '.[] | select(.draft == false) | [.number, .head.ref, .title] | @tsv')
 
   if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
-    echo "Open pending PR(s) found (not yet merged to main):"
+    echo "   Open pending PR(s) found (not yet merged to main):"
     for i in "${!CANDIDATES[@]}"; do
       IFS=$'\t' read -r num branch title <<< "${CANDIDATES[$i]}"
-      echo "  $((i+1))) #${num} ${title} (branch: ${branch})"
+      echo "     $((i+1))) #${num} ${title} (branch: ${branch})"
     done
-    echo "  0) none - use main"
-    read -p "Which one should be pulled? [0-${#CANDIDATES[@]}, default 0]: " choice
+    echo "     0) none - use main"
+    read -p "   Which one should be pulled? [0-${#CANDIDATES[@]}, default 0]: " choice
     choice="${choice:-0}"
     if [[ "$choice" =~ ^[1-9][0-9]*$ ]] && (( choice <= ${#CANDIDATES[@]} )); then
       IFS=$'\t' read -r _ CLONE_REF _ <<< "${CANDIDATES[$((choice-1))]}"
     fi
+  else
+    echo "   No open pending PRs - will use main."
   fi
 else
-  echo "jq not found - skipping pending PR check."
+  echo "   jq not found - skipping pending PR check, will use main."
 fi
-# --- End feature check ---
 
+echo ""
+echo ">> Step 3/9: Cloning repository"
 CLONE_ARGS=()
 [[ -n "$CLONE_REF" ]] && CLONE_ARGS=(-b "$CLONE_REF")
+echo "   Ref: ${CLONE_REF:-main (default branch)}"
 
 if [[ -n "$GH_TOKEN" ]]; then
   # Auth header is passed via git config, not embedded in the URL, so it's
@@ -92,7 +98,8 @@ else
 fi
 cd sms-frontend2-copilot
 
-# --- Determine the image version to build: check the registry, suggest the next one ---
+echo ""
+echo ">> Step 4/9: Checking image version on the registry"
 REGISTRY="zot.salvetti.info"
 IMAGE_NAME="modem-dashboard"
 
@@ -119,18 +126,25 @@ fi
 if [[ -n "$NEW_VERSION" ]]; then
   sed -i.bak -E "s|(org\.opencontainers\.image\.version=\")[^\"]*(\")|\1${NEW_VERSION}\2|" Dockerfile
 fi
-# --- End version selection ---
 
+echo ""
+echo ">> Step 5/9: Updating Dockerfile metadata"
 CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 sed -i.bak -E 's@(org\.opencontainers\.image\.created=")[^"]*"@\1'${CREATED}'"@' Dockerfile
+echo "   org.opencontainers.image.created set to ${CREATED}"
 
+echo ""
+echo ">> Step 6/9: Cleaning up old Docker images and build cache"
 yes | docker image prune --all
 yes | docker builder prune --all
 
+echo ""
+echo ">> Step 7/9: Building Docker image"
 docker build -t modem-dashboard .
 
-# --- Detect target system: Docker or K3S ---
+echo ""
+echo ">> Step 8/9: Detecting deployment target"
 DEPLOY_TARGET=""
 if command -v k3s &>/dev/null || systemctl is-active --quiet k3s 2>/dev/null || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
   DEPLOY_TARGET="k3s"
@@ -139,29 +153,41 @@ elif command -v docker &>/dev/null; then
 fi
 
 if [[ -z "$DEPLOY_TARGET" ]]; then
-  read -p "Could not auto-detect Docker or K3S. Deploy target: (d)ocker or (k)3s? [d/k]: " target_choice
+  read -p "   Could not auto-detect Docker or K3S. Deploy target: (d)ocker or (k)3s? [d/k]: " target_choice
   [[ "$target_choice" =~ ^[Kk]$ ]] && DEPLOY_TARGET="k3s" || DEPLOY_TARGET="docker"
-else
-  echo "Detected deploy target: ${DEPLOY_TARGET}"
 fi
-# --- End target detection ---
+echo "   Detected environment: ${DEPLOY_TARGET}"
+
+read -p "   Proceed with deployment on ${DEPLOY_TARGET}? [Y/n] (n to skip): " confirm_deploy
+confirm_deploy="${confirm_deploy:-Y}"
+[[ "$confirm_deploy" =~ ^[Yy]$ ]] || DEPLOY_TARGET="skip"
 
 if [[ "$DEPLOY_TARGET" == "k3s" ]]; then
-  read -p "Deploy to K3S with 'kubectl apply -f k3s-deploy.yaml'? [Y/N] " deploy_answer
-  [[ "$deploy_answer" =~ ^[Yy]$ ]] && kubectl apply -f k3s-deploy.yaml
+  echo "   Applying k3s-deploy.yaml..."
+  kubectl apply -f k3s-deploy.yaml
+elif [[ "$DEPLOY_TARGET" == "docker" ]]; then
+  echo "   Starting with docker compose..."
+  docker compose -f docker-compose.yml up -d --remove-orphans
 else
-  read -p "Deploy with 'docker compose up -d'? [Y/N] " deploy_answer
-  [[ "$deploy_answer" =~ ^[Yy]$ ]] && docker compose -f docker-compose.yml up -d --remove-orphans
+  echo "   Skipping deployment."
 fi
 
+echo ""
+echo ">> Step 9/9: Tagging and pushing the image"
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:latest
+echo "   Tagged as ${VERSION} and latest."
 
-read -p "Push images zot.salvetti.info/modem-dashboard:${VERSION} and zot.salvetti.info/modem-dashboard:latest? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION} && docker push zot.salvetti.info/modem-dashboard:latest
+read -p "   Push images zot.salvetti.info/modem-dashboard:${VERSION} and zot.salvetti.info/modem-dashboard:latest? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION} && docker push zot.salvetti.info/modem-dashboard:latest
 
+echo ""
+echo ">> Cleaning up build cache"
 yes | docker image prune --all
 yes | docker builder prune --all
+
+echo ""
+echo "Completed."
 ```
 
 ### Access the UI
