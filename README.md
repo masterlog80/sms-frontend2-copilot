@@ -36,8 +36,12 @@ A Dockerized web dashboard for USB stick SIM modems and compatible AT-command de
 ### Clone & build
 
 ```bash
+# Optional custom pre-deploy operations (e.g. copying or deleting files).
+# Runs after the image is built, before deployment. Leave empty to skip.
+OPERATIONS=""
+
 echo ""
-echo ">> Step 1/9: GitHub authentication"
+echo ">> Step 1/10: GitHub authentication"
 GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
 if [[ -n "$GH_TOKEN" ]]; then
   echo "   Using existing GH_TOKEN/GITHUB_TOKEN from the environment."
@@ -51,7 +55,7 @@ AUTH_HEADER=()
 [[ -n "$GH_TOKEN" ]] && AUTH_HEADER=(-H "Authorization: token ${GH_TOKEN}")
 
 echo ""
-echo ">> Step 2/9: Checking for open pending pull requests"
+echo ">> Step 2/10: Checking for open pending pull requests"
 CLONE_REF=""
 if command -v jq &>/dev/null; then
   PR_JSON=$(curl -s "${AUTH_HEADER[@]}" -H "Accept: application/vnd.github+json" \
@@ -83,7 +87,7 @@ else
 fi
 
 echo ""
-echo ">> Step 3/9: Cloning repository"
+echo ">> Step 3/10: Cloning repository"
 CLONE_ARGS=()
 [[ -n "$CLONE_REF" ]] && CLONE_ARGS=(-b "$CLONE_REF")
 echo "   Ref: ${CLONE_REF:-main (default branch)}"
@@ -99,7 +103,7 @@ fi
 cd sms-frontend2-copilot
 
 echo ""
-echo ">> Step 4/9: Checking image version on the registry"
+echo ">> Step 4/10: Checking image version on the registry"
 REGISTRY="zot.salvetti.info"
 IMAGE_NAME="modem-dashboard"
 
@@ -128,23 +132,32 @@ if [[ -n "$NEW_VERSION" ]]; then
 fi
 
 echo ""
-echo ">> Step 5/9: Updating Dockerfile metadata"
+echo ">> Step 5/10: Updating Dockerfile metadata"
 CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 sed -i.bak -E 's@(org\.opencontainers\.image\.created=")[^"]*"@\1'${CREATED}'"@' Dockerfile
 echo "   org.opencontainers.image.created set to ${CREATED}"
 
 echo ""
-echo ">> Step 6/9: Cleaning up old Docker images and build cache"
+echo ">> Step 6/10: Cleaning up old Docker images and build cache"
 yes | docker image prune --all
 yes | docker builder prune --all
 
 echo ""
-echo ">> Step 7/9: Building Docker image"
+echo ">> Step 7/10: Building Docker image"
 docker build -t modem-dashboard .
 
 echo ""
-echo ">> Step 8/9: Detecting deployment target"
+echo ">> Step 8/10: Running custom operations"
+if [[ -n "$OPERATIONS" ]]; then
+  echo "   Running: ${OPERATIONS}"
+  eval "$OPERATIONS"
+else
+  echo "   OPERATIONS is empty - skipping."
+fi
+
+echo ""
+echo ">> Step 9/10: Detecting deployment target"
 DEPLOY_TARGET=""
 if command -v k3s &>/dev/null || systemctl is-active --quiet k3s 2>/dev/null || [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
   DEPLOY_TARGET="k3s"
@@ -173,7 +186,7 @@ else
 fi
 
 echo ""
-echo ">> Step 9/9: Tagging and pushing the image"
+echo ">> Step 10/10: Tagging and pushing the image"
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
 docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:latest
