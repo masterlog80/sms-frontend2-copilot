@@ -36,9 +36,17 @@ A Dockerized web dashboard for USB stick SIM modems and compatible AT-command de
 ### Clone & build
 
 ```bash
-# Optional custom pre-deploy operations (e.g. copying or deleting files).
-# Runs after the image is built, before deployment. Leave empty to skip.
-OPERATIONS=""
+# ============================================================
+# Configuration - edit these as needed
+# ============================================================
+REPO="masterlog80/sms-frontend2-copilot"    # GitHub repo (owner/name)
+DIRNAME="sms-frontend2-copilot"             # local directory name after clone
+REGISTRY="zot.salvetti.info"                # container registry host
+IMAGE_NAME="modem-dashboard"                # local build tag / registry image name
+COMPOSE_FILE="docker-compose.yml"           # docker compose file
+K3S_MANIFEST="k3s-deploy.yaml"              # k3s manifest
+OPERATIONS=""                               # optional custom pre-deploy shell command(s)
+# ============================================================
 
 echo ""
 echo ">> Step 1/10: GitHub authentication"
@@ -50,7 +58,6 @@ else
   echo
 fi
 
-REPO="masterlog80/sms-frontend2-copilot"
 AUTH_HEADER=()
 [[ -n "$GH_TOKEN" ]] && AUTH_HEADER=(-H "Authorization: token ${GH_TOKEN}")
 
@@ -96,17 +103,14 @@ if [[ -n "$GH_TOKEN" ]]; then
   # Auth header is passed via git config, not embedded in the URL, so it's
   # never written to .git/config or left lying around on disk.
   git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
-    clone "${CLONE_ARGS[@]}" "https://github.com/masterlog80/sms-frontend2-copilot.git"
+    clone "${CLONE_ARGS[@]}" "https://github.com/${REPO}.git"
 else
-  git clone "${CLONE_ARGS[@]}" "https://github.com/masterlog80/sms-frontend2-copilot.git"
+  git clone "${CLONE_ARGS[@]}" "https://github.com/${REPO}.git"
 fi
-cd sms-frontend2-copilot
+cd "${DIRNAME}"
 
 echo ""
 echo ">> Step 4/10: Checking image version on the registry"
-REGISTRY="zot.salvetti.info"
-IMAGE_NAME="modem-dashboard"
-
 CURRENT_VERSION=$(curl -s "https://${REGISTRY}/v2/${IMAGE_NAME}/tags/list" 2>/dev/null \
   | jq -r '.tags[]?' 2>/dev/null \
   | grep -E '^[0-9]+\.[0-9]+$' \
@@ -145,7 +149,7 @@ yes | docker builder prune --all
 
 echo ""
 echo ">> Step 7/10: Building Docker image"
-docker build -t modem-dashboard .
+docker build -t "${IMAGE_NAME}" .
 
 echo ""
 echo ">> Step 8/10: Running custom operations"
@@ -176,11 +180,11 @@ confirm_deploy="${confirm_deploy:-Y}"
 [[ "$confirm_deploy" =~ ^[Yy]$ ]] || DEPLOY_TARGET="skip"
 
 if [[ "$DEPLOY_TARGET" == "k3s" ]]; then
-  echo "   Applying k3s-deploy.yaml..."
-  kubectl apply -f k3s-deploy.yaml
+  echo "   Applying ${K3S_MANIFEST}..."
+  kubectl apply -f "${K3S_MANIFEST}"
 elif [[ "$DEPLOY_TARGET" == "docker" ]]; then
   echo "   Starting with docker compose..."
-  docker compose -f docker-compose.yml up -d --remove-orphans
+  docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
 else
   echo "   Skipping deployment."
 fi
@@ -188,11 +192,11 @@ fi
 echo ""
 echo ">> Step 10/10: Tagging and pushing the image"
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
-docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:${VERSION}
-docker tag modem-dashboard:latest zot.salvetti.info/modem-dashboard:latest
+docker tag "${IMAGE_NAME}:latest" "${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+docker tag "${IMAGE_NAME}:latest" "${REGISTRY}/${IMAGE_NAME}:latest"
 echo "   Tagged as ${VERSION} and latest."
 
-read -p "   Push images zot.salvetti.info/modem-dashboard:${VERSION} and zot.salvetti.info/modem-dashboard:latest? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/modem-dashboard:${VERSION} && docker push zot.salvetti.info/modem-dashboard:latest
+read -p "   Push images ${REGISTRY}/${IMAGE_NAME}:${VERSION} and ${REGISTRY}/${IMAGE_NAME}:latest? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push "${REGISTRY}/${IMAGE_NAME}:${VERSION}" && docker push "${REGISTRY}/${IMAGE_NAME}:latest"
 
 echo ""
 echo ">> Cleaning up build cache"
