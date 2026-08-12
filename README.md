@@ -46,7 +46,11 @@ export COMPOSE_FILE="docker-compose.yml"
 export K3S_MANIFEST="k3s-deploy.yaml"
 export OPERATIONS=""
 
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/masterlog80/homelab-scripts/main/clone-build.sh)"
+GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+[[ -z "$GH_TOKEN" ]] && read -s -p "GitHub token (required - homelab-scripts is private): " GH_TOKEN && echo
+export GH_TOKEN
+
+bash -c "$(curl -fsSL -H "Authorization: token ${GH_TOKEN}" https://raw.githubusercontent.com/masterlog80/homelab-scripts/main/clone-build.sh)"
 ```
 
 ### Access the UI
